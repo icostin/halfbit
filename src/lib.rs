@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod num;
+
 pub fn lib_name() -> &'static str {
     "halfbit"
 }
