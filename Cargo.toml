@@ -3,6 +3,12 @@ name = "halfbit"
 version = "0.0.0"
 authors = ["Costin Ionescu <costin.ionescu@gmail.com>"]
 edition = "2018"
+description = "a free-standing collection of utilities"
+license = "MIT"
+license-file = "LICENSE"
+homepage = "https://github.com/icostin/halfbit"
+repository = "https://github.com/icostin/halfbit"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
