@@ -5,7 +5,6 @@ authors = ["Costin Ionescu <costin.ionescu@gmail.com>"]
 edition = "2018"
 description = "a free-standing collection of utilities"
 license = "MIT"
-license-file = "LICENSE"
 homepage = "https://github.com/icostin/halfbit"
 repository = "https://github.com/icostin/halfbit"
 readme = "README.md"
