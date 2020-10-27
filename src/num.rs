@@ -9,7 +9,7 @@ pub fn is_power_of_2<T> (n: T) -> bool
 
 use core::num::NonZeroUsize;
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Pow2Usize(NonZeroUsize);
 
 impl Pow2Usize {
@@ -57,8 +57,15 @@ impl Pow2Usize {
             Pow2Usize::new(self.get().wrapping_shr(count))
         }
     }
-
 }
+
+use core::num::Wrapping;
+pub fn usize_align_up (n: usize, align: Pow2Usize) -> Option<usize> {
+    let mask = Wrapping(align.get()) - Wrapping(1usize);
+    let aligned = (Wrapping(n) + mask).0 & !mask.0;
+    if aligned < n { None } else { Some(aligned) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
