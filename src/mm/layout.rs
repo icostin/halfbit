@@ -35,7 +35,6 @@ impl MemBlockLayout {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
