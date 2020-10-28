@@ -8,7 +8,7 @@ use crate::num::{
 #[derive(PartialEq, Debug)]
 pub enum MemBlockLayoutError {
     InvalidAlignment, // alignment not power of 2
-    SizeTooBig, // aligning the size overflows usize
+    AlignedSizeTooBig, // aligning the size overflows usize
 }
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ impl MemBlockLayout {
         }
         let align = align.unwrap();
         if usize_align_up(size, align).is_none() {
-            Err(MemBlockLayoutError::SizeTooBig)
+            Err(MemBlockLayoutError::AlignedSizeTooBig)
         } else {
             Ok(MemBlockLayout { size, align })
         }
@@ -56,6 +56,6 @@ mod tests {
     fn size_too_big_mem_layout() {
         let mbl = MemBlockLayout::new(usize::MAX, 2usize);
         assert!(mbl.is_err());
-        assert_eq!(mbl.unwrap_err(), MemBlockLayoutError::SizeTooBig);
+        assert_eq!(mbl.unwrap_err(), MemBlockLayoutError::AlignedSizeTooBig);
     }
 }
