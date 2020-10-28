@@ -14,10 +14,8 @@ use super::layout::MemBlockLayoutError;
 impl From<MemBlockLayoutError> for AllocError {
     fn from(e: MemBlockLayoutError) -> Self {
         match e {
-            MemBlockLayoutError::InvalidAlignment
-                => AllocError::InvalidAlignment,
-            MemBlockLayoutError::AlignedSizeTooBig
-                => AllocError::AlignedSizeTooBig,
+            MemBlockLayoutError::InvalidAlignment => AllocError::InvalidAlignment,
+            MemBlockLayoutError::AlignedSizeTooBig => AllocError::AlignedSizeTooBig,
         }
     }
 }
