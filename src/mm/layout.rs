@@ -1,4 +1,5 @@
 use core::result::Result;
+use core::mem;
 
 use crate::num::{
     Pow2Usize,
@@ -32,6 +33,9 @@ impl MemBlockLayout {
         } else {
             Ok(MemBlockLayout { size, align })
         }
+    }
+    pub fn from_type<T>() -> MemBlockLayout {
+        MemBlockLayout::new(mem::size_of::<T>(), mem::align_of::<T>()).unwrap()
     }
 }
 

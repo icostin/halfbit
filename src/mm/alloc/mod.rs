@@ -32,8 +32,26 @@ pub unsafe trait RawAllocator {
         ptr: *mut u8,
         layout: MemBlockLayout
     );
-    fn name() -> &'static str;
+    fn name(&self) -> &'static str;
 }
+
+pub struct AllocatorRef<'a> {
+    raw_allocator: &'a dyn RawAllocator
+}
+
+impl<'a> AllocatorRef<'a> {
+    pub fn new(raw_allocator: &'a mut dyn RawAllocator) -> AllocatorRef<'a> {
+        AllocatorRef { raw_allocator }
+    }
+}
+
+impl dyn RawAllocator {
+    fn as_ref(&mut self) -> AllocatorRef {
+        AllocatorRef::new(self)
+    }
+}
+
+pub mod null;
 
 #[cfg(test)]
 mod tests {
