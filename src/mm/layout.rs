@@ -1,5 +1,7 @@
 use core::result::Result;
+use core::option::Option;
 use core::mem;
+use core::num::NonZeroUsize;
 
 use crate::num::{
     Pow2Usize,
@@ -37,6 +39,32 @@ impl MemBlockLayout {
     pub fn from_type<T>() -> MemBlockLayout {
         MemBlockLayout::new(mem::size_of::<T>(), mem::align_of::<T>()).unwrap()
     }
+    pub fn is_zero_sized(&self) -> bool {
+        self.size == 0
+    }
+    pub fn to_non_zero_layout(&self) -> Option<NonZeroMemBlockLayout> {
+        NonZeroMemBlockLayout::new(&self)
+    }
+}
+
+pub struct NonZeroMemBlockLayout {
+    size: NonZeroUsize,
+    align: Pow2Usize,
+}
+
+impl NonZeroMemBlockLayout {
+    pub fn new(
+        mbl: &MemBlockLayout
+    ) -> Option<NonZeroMemBlockLayout> {
+        if mbl.is_zero_sized() {
+            None
+        } else {
+            Some(NonZeroMemBlockLayout {
+                size: NonZeroUsize::new(mbl.size).unwrap(),
+                align: mbl.align,
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -47,6 +75,8 @@ mod tests {
     fn zero_sized_layout() {
         let l = MemBlockLayout::new(0, 1);
         assert!(l.is_ok());
+        let l = l.unwrap();
+        assert!(l.is_zero_sized());
     }
 
     #[test]
@@ -62,4 +92,19 @@ mod tests {
         assert!(mbl.is_err());
         assert_eq!(mbl.unwrap_err(), MemBlockLayoutError::AlignedSizeTooBig);
     }
+
+    #[test]
+    fn non_zero_layout_from_zero_size() {
+        let l = MemBlockLayout::new(0, 1).unwrap();
+        assert!(l.to_non_zero_layout().is_none());
+    }
+
+    #[test]
+    fn non_zero_layout_from_non_zero_size() {
+        let l = MemBlockLayout::new(77, 16).unwrap();
+        let n = l.to_non_zero_layout().unwrap();
+        assert_eq!(n.size.get(), l.size);
+        assert_eq!(n.align, l.align);
+    }
+
 }
