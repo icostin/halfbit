@@ -13,10 +13,10 @@ unsafe impl RawAllocator for NullRawAllocator {
     }
     unsafe fn free(
         &mut self,
-        ptr: *mut u8,
-        layout: MemBlockLayout
+        _ptr: *mut u8,
+        _layout: MemBlockLayout
     ) {
-        panic!("aaaaaaaaaa");
+        panic!("null allocator cannot free memory because it never allocates");
     }
     fn name(&self) -> &'static str {
         "NullAllocator"
@@ -26,6 +26,15 @@ unsafe impl RawAllocator for NullRawAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::ptr;
+
+    #[test]
+    fn relevant_name() {
+        let mut nra = NullRawAllocator{};
+        let name = nra.name();
+        assert!(name.contains("null") || name.contains("Null"));
+        assert!(name.contains("alloc") || name.contains("Alloc"));
+    }
 
     #[test]
     fn raw_alloc_1_byte_fails() {
@@ -33,5 +42,15 @@ mod tests {
         assert_eq!(nra.alloc(MemBlockLayout::from_type::<u8>()).unwrap_err(),
             AllocError::NotEnoughMemory);
     }
+
+    #[test]
+    #[should_panic(expected = "null allocator cannot free")]
+    fn raw_free_panics() {
+        let mut nra = NullRawAllocator{};
+        unsafe {
+            nra.free(ptr::null_mut::<u8>(), MemBlockLayout::from_type::<u8>())
+        };
+    }
+
 
 }
