@@ -55,7 +55,7 @@ pub struct NonZeroMemBlockLayout {
 impl NonZeroMemBlockLayout {
     pub fn new(
         mbl: &MemBlockLayout
-    ) -> Option<NonZeroMemBlockLayout> {
+    ) -> Option<Self> {
         if mbl.is_zero_sized() {
             None
         } else {
@@ -65,6 +65,10 @@ impl NonZeroMemBlockLayout {
             })
         }
     }
+    pub fn from_type<T: Sized>() -> Self {
+        NonZeroMemBlockLayout::new(&MemBlockLayout::from_type::<T>()).unwrap()
+    }
+
 }
 
 #[cfg(test)]

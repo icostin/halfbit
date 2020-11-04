@@ -1,4 +1,4 @@
-use crate::mm::layout::MemBlockLayout;
+use crate::mm::layout::NonZeroMemBlockLayout;
 use super::AllocError;
 use super::RawAllocator;
 
@@ -7,14 +7,14 @@ pub struct NullRawAllocator { }
 unsafe impl RawAllocator for NullRawAllocator {
     fn alloc(
         &mut self,
-        _layout: MemBlockLayout
+        _layout: NonZeroMemBlockLayout
     ) -> Result<*mut u8, AllocError> {
         Err(AllocError::NotEnoughMemory)
     }
     unsafe fn free(
         &mut self,
         _ptr: *mut u8,
-        _layout: MemBlockLayout
+        _layout: NonZeroMemBlockLayout
     ) {
         panic!("null allocator cannot free memory because it never allocates");
     }
@@ -39,7 +39,8 @@ mod tests {
     #[test]
     fn raw_alloc_1_byte_fails() {
         let mut nra = NullRawAllocator{};
-        assert_eq!(nra.alloc(MemBlockLayout::from_type::<u8>()).unwrap_err(),
+        assert_eq!(
+            nra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap_err(),
             AllocError::NotEnoughMemory);
     }
 
@@ -48,7 +49,8 @@ mod tests {
     fn raw_free_panics() {
         let mut nra = NullRawAllocator{};
         unsafe {
-            nra.free(ptr::null_mut::<u8>(), MemBlockLayout::from_type::<u8>())
+            nra.free(ptr::null_mut::<u8>(),
+                     NonZeroMemBlockLayout::from_type::<u8>())
         };
     }
 

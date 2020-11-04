@@ -20,17 +20,17 @@ impl From<MemBlockLayoutError> for AllocError {
     }
 }
 
-use super::layout::MemBlockLayout;
+use super::layout::NonZeroMemBlockLayout;
 
 pub unsafe trait RawAllocator {
     fn alloc(
         &mut self,
-        layout: MemBlockLayout
+        layout: NonZeroMemBlockLayout
     ) -> Result<*mut u8, AllocError>;
     unsafe fn free(
         &mut self,
         ptr: *mut u8,
-        layout: MemBlockLayout
+        layout: NonZeroMemBlockLayout
     );
     fn name(&self) -> &'static str;
 }
