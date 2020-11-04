@@ -40,16 +40,43 @@ pub struct AllocatorRef<'a> {
 }
 
 impl<'a> AllocatorRef<'a> {
-    pub fn new(raw_allocator: &'a mut dyn RawAllocator) -> AllocatorRef<'a> {
+    pub fn new(raw_allocator: &'a dyn RawAllocator) -> AllocatorRef<'a> {
         AllocatorRef { raw_allocator }
     }
 }
 
+impl<'a> core::fmt::Debug for AllocatorRef<'a> {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>)
+    -> core::result::Result<(), core::fmt::Error> {
+        write!(fmt, "{}@{:X}", self.raw_allocator.name(), ((self.raw_allocator as *const dyn RawAllocator) as *const u8) as usize)
+    }
+}
+
 impl dyn RawAllocator {
-    fn as_ref(&mut self) -> AllocatorRef {
+    fn get_ref(&self) -> AllocatorRef {
         AllocatorRef::new(self)
     }
 }
+
+#[derive(Debug)]
+pub struct AllocObject<'a, T> {
+    ptr: *mut T,
+    allocator: AllocatorRef<'a>
+}
+
+use core::ops::{ Deref, DerefMut };
+impl<'a, T> Deref for AllocObject<'a, T> {
+    type Target = T;
+    fn deref (&self) -> &Self::Target {
+        unsafe { & *self.ptr }
+    }
+}
+impl<'a, T> DerefMut for AllocObject<'a, T> {
+    fn deref_mut (&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.ptr }
+    }
+}
+
 
 pub mod null;
 
