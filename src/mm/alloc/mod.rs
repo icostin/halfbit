@@ -1,4 +1,10 @@
+use core::ptr;
+use core::mem;
+use core::ops::{ Drop, Deref, DerefMut };
+use super::layout::MemBlockLayoutError;
+use super::layout::NonZeroMemBlockLayout;
 
+/* AllocError ***************************************************************/
 #[derive(PartialEq, Debug)]
 pub enum AllocError {
     InvalidAlignment, // alignment not a power of 2
@@ -10,7 +16,6 @@ pub enum AllocError {
     UnsupportedOperation, // alloc, resize, free not supported
 }
 
-use super::layout::MemBlockLayoutError;
 impl From<MemBlockLayoutError> for AllocError {
     fn from(e: MemBlockLayoutError) -> Self {
         match e {
@@ -20,8 +25,7 @@ impl From<MemBlockLayoutError> for AllocError {
     }
 }
 
-use super::layout::NonZeroMemBlockLayout;
-
+/* RawAllocator *************************************************************/
 pub unsafe trait RawAllocator {
     fn alloc(
         &mut self,
@@ -35,13 +39,43 @@ pub unsafe trait RawAllocator {
     fn name(&self) -> &'static str;
 }
 
+/* AllocatorRef *************************************************************/
 pub struct AllocatorRef<'a> {
-    raw_allocator: &'a dyn RawAllocator
+    raw_allocator: &'a (dyn RawAllocator + 'a)
 }
 
 impl<'a> AllocatorRef<'a> {
     pub fn new(raw_allocator: &'a dyn RawAllocator) -> AllocatorRef<'a> {
         AllocatorRef { raw_allocator }
+    }
+    fn get_raw_allocator_mut(&self) -> &'a mut dyn RawAllocator {
+        unsafe {
+            let a = self.raw_allocator as *const dyn RawAllocator;
+            let b = a as *mut dyn RawAllocator;
+            let c = &mut *b;
+            c
+            //&mut *((self.raw_allocator as *const dyn RawAllocator) as *mut dyn RawAllocator)
+        }
+    }
+    pub fn alloc<T: Sized>(
+        &self,
+        value: T,
+    ) -> Result<AllocObject<'a, T>, AllocError> {
+        let ra: &'a mut dyn RawAllocator = self.get_raw_allocator_mut();
+        let layout = NonZeroMemBlockLayout::from_type::<T>();
+        let alloc_result = ra.alloc(layout);
+        match alloc_result {
+            Ok(ptr) => {
+                unsafe { ptr::write(ptr as *mut T, value) };
+                let ao: AllocObject<'a, T> = AllocObject {
+                    ptr: unsafe { &mut *(ptr as *mut T) },
+                    //allocator: AllocatorRef::new(ra) //.get_ref()
+                    allocator: ra.get_ref()
+                };
+                Ok(ao)
+            },
+            Err(e) => Err(e)
+        }
     }
 }
 
@@ -52,19 +86,31 @@ impl<'a> core::fmt::Debug for AllocatorRef<'a> {
     }
 }
 
-impl dyn RawAllocator {
-    fn get_ref(&self) -> AllocatorRef {
+impl<'a> (dyn RawAllocator + 'a) {
+    fn get_ref(&'a self) -> AllocatorRef<'a> {
         AllocatorRef::new(self)
     }
 }
 
+/* AllocObject **************************************************************/
 #[derive(Debug)]
 pub struct AllocObject<'a, T> {
     ptr: *mut T,
     allocator: AllocatorRef<'a>
 }
 
-use core::ops::{ Deref, DerefMut };
+impl<'a, T> Drop for AllocObject<'a, T> {
+    fn drop(&mut self) {
+        mem::drop(unsafe{&mut *self.ptr });
+        let raw_allocator = self.allocator.get_raw_allocator_mut();
+        unsafe {
+            raw_allocator.free(self.ptr as *mut u8,
+                NonZeroMemBlockLayout::from_type::<T>())
+        };
+    }
+}
+
+
 impl<'a, T> Deref for AllocObject<'a, T> {
     type Target = T;
     fn deref (&self) -> &Self::Target {
@@ -76,7 +122,6 @@ impl<'a, T> DerefMut for AllocObject<'a, T> {
         unsafe { &mut *self.ptr }
     }
 }
-
 
 pub mod null;
 

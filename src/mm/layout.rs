@@ -47,6 +47,7 @@ impl MemBlockLayout {
     }
 }
 
+#[derive(Debug)]
 pub struct NonZeroMemBlockLayout {
     size: NonZeroUsize,
     align: Pow2Usize,

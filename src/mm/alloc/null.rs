@@ -4,6 +4,12 @@ use super::RawAllocator;
 
 pub struct NullRawAllocator { }
 
+impl NullRawAllocator {
+    pub fn new() -> NullRawAllocator {
+        NullRawAllocator { }
+    }
+}
+
 unsafe impl RawAllocator for NullRawAllocator {
     fn alloc(
         &mut self,
@@ -26,11 +32,12 @@ unsafe impl RawAllocator for NullRawAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::*;
     use core::ptr;
 
     #[test]
     fn relevant_name() {
-        let mut nra = NullRawAllocator{};
+        let nra = NullRawAllocator::new();
         let name = nra.name();
         assert!(name.contains("null") || name.contains("Null"));
         assert!(name.contains("alloc") || name.contains("Alloc"));
@@ -38,7 +45,7 @@ mod tests {
 
     #[test]
     fn raw_alloc_1_byte_fails() {
-        let mut nra = NullRawAllocator{};
+        let mut nra = NullRawAllocator::new();
         assert_eq!(
             nra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap_err(),
             AllocError::NotEnoughMemory);
@@ -47,12 +54,20 @@ mod tests {
     #[test]
     #[should_panic(expected = "null allocator cannot free")]
     fn raw_free_panics() {
-        let mut nra = NullRawAllocator{};
+        let mut nra = NullRawAllocator::new();
         unsafe {
             nra.free(ptr::null_mut::<u8>(),
                      NonZeroMemBlockLayout::from_type::<u8>())
         };
     }
 
-
+    #[test]
+    fn alloc_1_byte_fails() {
+        let nra = NullRawAllocator::new();
+        let allocator = AllocatorRef::new(&nra);
+        let layout = NonZeroMemBlockLayout::from_type::<u8>();
+        assert_eq!(
+            allocator.alloc(layout).unwrap_err(),
+            AllocError::NotEnoughMemory);
+    }
 }
