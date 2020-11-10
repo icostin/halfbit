@@ -70,6 +70,23 @@ impl NonZeroMemBlockLayout {
         NonZeroMemBlockLayout::new(&MemBlockLayout::from_type::<T>()).unwrap()
     }
 
+    pub fn size(&self) -> NonZeroUsize {
+        self.size
+    }
+
+    pub fn size_as_usize(&self) -> usize {
+        self.size().get()
+    }
+
+
+    pub fn align(&self) -> Pow2Usize {
+        self.align
+    }
+
+    pub fn align_as_usize(&self) -> usize {
+        self.align().get()
+    }
+
 }
 
 #[cfg(test)]
@@ -108,8 +125,8 @@ mod tests {
     fn non_zero_layout_from_non_zero_size() {
         let l = MemBlockLayout::new(77, 16).unwrap();
         let n = l.to_non_zero_layout().unwrap();
-        assert_eq!(n.size.get(), l.size);
-        assert_eq!(n.align, l.align);
+        assert_eq!(n.size_as_usize(), l.size);
+        assert_eq!(n.align_as_usize(), l.align.get());
     }
 
 }

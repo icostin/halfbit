@@ -24,9 +24,7 @@ unsafe impl RawAllocator for NullRawAllocator {
     ) {
         panic!("null allocator cannot free memory because it never allocates");
     }
-    fn name(&self) -> &'static str {
-        "NullAllocator"
-    }
+    fn name(&self) -> &'static str { "NullAllocator" }
 }
 
 #[cfg(test)]

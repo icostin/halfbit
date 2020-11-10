@@ -14,6 +14,7 @@ pub enum AllocError {
     NotEnoughMemory, // the proverbial hits the fan
     OperationFailed, // failure performing the operation (OS mem mapping error)
     UnsupportedOperation, // alloc, resize, free not supported
+    NotImplemented,
 }
 
 impl From<MemBlockLayoutError> for AllocError {
@@ -49,13 +50,9 @@ impl<'a> AllocatorRef<'a> {
         AllocatorRef { raw_allocator }
     }
     fn get_raw_allocator_mut(&self) -> &'a mut dyn RawAllocator {
-        unsafe {
-            let a = self.raw_allocator as *const dyn RawAllocator;
-            let b = a as *mut dyn RawAllocator;
-            let c = &mut *b;
-            c
-            //&mut *((self.raw_allocator as *const dyn RawAllocator) as *mut dyn RawAllocator)
-        }
+        let a = self.raw_allocator as *const dyn RawAllocator;
+        let b = a as *mut dyn RawAllocator;
+        unsafe { &mut *b }
     }
     pub fn alloc<T: Sized>(
         &self,
@@ -69,8 +66,7 @@ impl<'a> AllocatorRef<'a> {
                 unsafe { ptr::write(ptr as *mut T, value) };
                 let ao: AllocObject<'a, T> = AllocObject {
                     ptr: unsafe { &mut *(ptr as *mut T) },
-                    //allocator: AllocatorRef::new(ra) //.get_ref()
-                    allocator: ra.get_ref()
+                    allocator: AllocatorRef::new(ra),
                 };
                 Ok(ao)
             },
@@ -83,12 +79,6 @@ impl<'a> core::fmt::Debug for AllocatorRef<'a> {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>)
     -> core::result::Result<(), core::fmt::Error> {
         write!(fmt, "{}@{:X}", self.raw_allocator.name(), ((self.raw_allocator as *const dyn RawAllocator) as *const u8) as usize)
-    }
-}
-
-impl<'a> (dyn RawAllocator + 'a) {
-    fn get_ref(&'a self) -> AllocatorRef<'a> {
-        AllocatorRef::new(self)
     }
 }
 
@@ -110,7 +100,6 @@ impl<'a, T> Drop for AllocObject<'a, T> {
     }
 }
 
-
 impl<'a, T> Deref for AllocObject<'a, T> {
     type Target = T;
     fn deref (&self) -> &Self::Target {
@@ -124,6 +113,7 @@ impl<'a, T> DerefMut for AllocObject<'a, T> {
 }
 
 pub mod null;
+pub mod bump;
 
 #[cfg(test)]
 mod tests {
