@@ -88,8 +88,10 @@ mod tests {
         let a = AllocatorRef::new(&ra);
         let r = a.alloc(42u8);
         assert!(r.is_ok());
-        let o = r.unwrap();
+        let mut o = r.unwrap();
         assert_eq!(*o, 42u8);
+        *o = 0xABu8;
+        assert_eq!(*o, 0xABu8);
     }
 }
 
