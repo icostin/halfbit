@@ -43,9 +43,12 @@ unsafe impl<'a> RawAllocator for BumpRawAllocator<'a> {
     }
     unsafe fn free(
         &mut self,
-        _ptr: *mut u8,
-        _layout: NonZeroMemBlockLayout
+        ptr: *mut u8,
+        layout: NonZeroMemBlockLayout
     ) {
+        if self.begin_addr == (ptr as usize) + layout.size_as_usize() {
+            self.begin_addr = ptr as usize;
+        }
     }
     fn name(&self) -> &'static str { "BumpAllocator" }
 }
@@ -93,5 +96,31 @@ mod tests {
         *o = 0xABu8;
         assert_eq!(*o, 0xABu8);
     }
+
+    #[test]
+    fn dropping_last_allocation_reclaims_memory() {
+        let mut buffer = [0u8; 1];
+        let ra = BumpRawAllocator::new(&mut buffer);
+        let a = AllocatorRef::new(&ra);
+        {
+            let r = a.alloc(42u8);
+            assert!(r.is_ok());
+            let mut o = r.unwrap();
+            assert_eq!(*o, 42u8);
+            *o = 0xABu8;
+            assert_eq!(*o, 0xABu8);
+        }
+
+        {
+            let r = a.alloc(0x5Au8);
+            assert!(r.is_ok());
+            let mut o = r.unwrap();
+            assert_eq!(*o, 0x5Au8);
+            *o = 0xA5u8;
+            assert_eq!(*o, 0xA5u8);
+        }
+
+    }
+
 }
 
