@@ -57,14 +57,14 @@ impl<'a> AllocatorRef<'a> {
     pub fn alloc<T: Sized>(
         &self,
         value: T,
-    ) -> Result<AllocObject<'a, T>, AllocError> {
+    ) -> Result<Object<'a, T>, AllocError> {
         let ra: &'a mut dyn RawAllocator = self.get_raw_allocator_mut();
         let layout = NonZeroMemBlockLayout::from_type::<T>();
         let alloc_result = ra.alloc(layout);
         match alloc_result {
             Ok(ptr) => {
                 unsafe { ptr::write(ptr as *mut T, value) };
-                let ao: AllocObject<'a, T> = AllocObject {
+                let ao: Object<'a, T> = Object {
                     ptr: unsafe { &mut *(ptr as *mut T) },
                     allocator: AllocatorRef::new(ra),
                 };
@@ -82,14 +82,13 @@ impl<'a> core::fmt::Debug for AllocatorRef<'a> {
     }
 }
 
-/* AllocObject **************************************************************/
 #[derive(Debug)]
-pub struct AllocObject<'a, T> {
+pub struct Object<'a, T> {
     ptr: *mut T,
     allocator: AllocatorRef<'a>
 }
 
-impl<'a, T> Drop for AllocObject<'a, T> {
+impl<'a, T> Drop for Object<'a, T> {
     fn drop(&mut self) {
         mem::drop(unsafe{&mut *self.ptr });
         let raw_allocator = self.allocator.get_raw_allocator_mut();
@@ -100,13 +99,13 @@ impl<'a, T> Drop for AllocObject<'a, T> {
     }
 }
 
-impl<'a, T> Deref for AllocObject<'a, T> {
+impl<'a, T> Deref for Object<'a, T> {
     type Target = T;
     fn deref (&self) -> &Self::Target {
         unsafe { & *self.ptr }
     }
 }
-impl<'a, T> DerefMut for AllocObject<'a, T> {
+impl<'a, T> DerefMut for Object<'a, T> {
     fn deref_mut (&mut self) -> &mut Self::Target {
         unsafe { &mut *self.ptr }
     }
