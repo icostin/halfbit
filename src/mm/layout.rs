@@ -14,7 +14,7 @@ pub enum MemBlockLayoutError {
     AlignedSizeTooBig, // aligning the size overflows usize
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct MemBlockLayout {
     size: usize,
     align: Pow2Usize,
@@ -45,6 +45,22 @@ impl MemBlockLayout {
     pub fn to_non_zero_layout(&self) -> Option<NonZeroMemBlockLayout> {
         NonZeroMemBlockLayout::new(&self)
     }
+
+    pub fn to_layout_for_array(&self, count: usize) -> Option<MemBlockLayout> {
+        if count == 0 || self.size == 0 {
+            Some(MemBlockLayout { size: 0usize, align: self.align })
+        } else {
+            let aligned_size = usize_align_up(self.size, self.align).unwrap();
+            if count <= usize::MAX / aligned_size {
+                Some(MemBlockLayout {
+                    size: aligned_size * (count - 1) + self.size,
+                    align: self.align
+                })
+            } else {
+                None
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -54,6 +70,7 @@ pub struct NonZeroMemBlockLayout {
 }
 
 impl NonZeroMemBlockLayout {
+
     pub fn new(
         mbl: &MemBlockLayout
     ) -> Option<Self> {
@@ -66,6 +83,7 @@ impl NonZeroMemBlockLayout {
             })
         }
     }
+
     pub fn from_type<T: Sized>() -> Self {
         NonZeroMemBlockLayout::new(&MemBlockLayout::from_type::<T>()).unwrap()
     }
@@ -77,7 +95,6 @@ impl NonZeroMemBlockLayout {
     pub fn size_as_usize(&self) -> usize {
         self.size().get()
     }
-
 
     pub fn align(&self) -> Pow2Usize {
         self.align
@@ -127,6 +144,55 @@ mod tests {
         let n = l.to_non_zero_layout().unwrap();
         assert_eq!(n.size_as_usize(), l.size);
         assert_eq!(n.align_as_usize(), l.align.get());
+    }
+
+    #[test]
+    fn zero_items_array_layout() {
+        let l = MemBlockLayout::from_type::<u64>();
+        assert_eq!(l.size, 8usize);
+        let al = l.to_layout_for_array(0).unwrap();
+        assert_eq!(al.size, 0usize);
+    }
+
+    #[test]
+    fn zero_sized_layout_with_large_alignment_converts_to_zero_sized_array_layout() {
+        let l = MemBlockLayout::new(0, 0x100000).unwrap();
+        let al = l.to_layout_for_array(usize::MAX).unwrap();
+        assert_eq!(al.align, l.align);
+        assert_eq!(al.size, 0usize);
+    }
+
+    struct Toothy(u64, u64, u8);
+
+    #[test]
+    fn array_of_1_copies_layout() {
+        let l = MemBlockLayout::from_type::<Toothy>();
+        let al = l.to_layout_for_array(1usize).unwrap();
+        assert_eq!(l, al);
+    }
+
+
+    #[test]
+    fn unaligned_struct_size_is_multiplied_aligned_for_array_layout() {
+        let l = MemBlockLayout::new(0x11, 8).unwrap();
+        assert_eq!(l.align.get(), 8usize);
+        assert_eq!(l.size, 17usize);
+        let al = l.to_layout_for_array(5usize).unwrap();
+        assert_eq!(al.align, l.align);
+        assert_eq!(al.size, 0x71usize); // 24 bytes * 4 + 17
+    }
+
+    #[test]
+    fn array_layout_at_max_size() {
+        let l = MemBlockLayout::new(0xF, 1).unwrap();
+        let al = l.to_layout_for_array(usize::MAX / 0xF).unwrap();
+        assert_eq!(al.align, l.align);
+        assert_eq!(al.size, usize::MAX);
+    }
+    #[test]
+    fn array_layout_too_large_when_aligned() {
+        let l = MemBlockLayout::new(0xF, 2).unwrap();
+        assert!(l.to_layout_for_array(usize::MAX / 0xF).is_none());
     }
 
 }
