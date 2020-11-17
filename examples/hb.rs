@@ -1,5 +1,5 @@
 extern crate clap;
-use std::io::Read;
+use std::io::{ Read, Seek };
 use std::fmt::Write;
 
 #[derive(Debug)]
@@ -69,7 +69,7 @@ impl std::fmt::Display for AttrComputeError {
 
 struct Item<'a> {
     name: &'a str,
-    reader: std::io::BufReader<std::fs::File>,
+    file: std::fs::File,
 }
 
 enum ItemProcessingStatus {
@@ -124,13 +124,19 @@ fn process_args(args: Vec<String>) -> Result<Invocation, ToolError> {
     Ok(inv)
 }
 
+fn qread(f: &mut std::fs::File,
+         pos: u64,
+         buf: &mut [u8]) -> std::io::Result<()> {
+    let _pos = f.seek(std::io::SeekFrom::Start(pos))?;
+    f.read_exact(buf)
+}
+
 fn extract_first_byte<'a>(
     item: &mut Item<'a>,
 ) -> Result<AttrValue, AttrComputeError> {
     let mut buf = [0u8, 1];
-    let r = item.reader.read(&mut buf)?;
-    if r == 0 {
-        Err(AttrComputeError::NotApplicable)
+    if let Err(e) = qread(&mut item.file, 0, &mut buf) {
+        Err(if e.kind() == std::io::ErrorKind::UnexpectedEof { AttrComputeError::NotApplicable } else { AttrComputeError::IO(String::from("boo")) })
     } else {
         Ok(AttrValue::U64(buf[0] as u64))
     }
@@ -160,7 +166,7 @@ fn process_item(
     }
     let mut item = Item {
         name: item_name,
-        reader: std::io::BufReader::new(f.unwrap()),
+        file: f.unwrap(),
     };
 
     let mut error_count = 0isize;
