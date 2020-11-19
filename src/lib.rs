@@ -2,6 +2,7 @@
 
 pub mod num;
 pub mod mm; // memory manager
+pub mod io; // input/output
 
 pub fn lib_name() -> &'static str {
     "halfbit"
