@@ -7,7 +7,7 @@ pub fn is_power_of_2<T> (n: T) -> bool
     n != zero && (n & (n - one)) == zero
 }
 
-use core::num::NonZeroUsize;
+pub use core::num::NonZeroUsize;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Pow2Usize(NonZeroUsize);

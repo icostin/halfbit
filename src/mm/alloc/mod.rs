@@ -3,6 +3,7 @@ use core::mem;
 use core::ops::{ Drop, Deref, DerefMut };
 use super::layout::MemBlockLayoutError;
 use super::layout::NonZeroMemBlockLayout;
+use core::num::NonZeroUsize;
 
 /* AllocError ***************************************************************/
 #[derive(PartialEq, Debug)]
@@ -37,6 +38,20 @@ pub unsafe trait RawAllocator {
         ptr: *mut u8,
         layout: NonZeroMemBlockLayout
     );
+    unsafe fn grow(
+        &mut self,
+        _ptr: *mut u8,
+        _current_layout: NonZeroMemBlockLayout,
+        _new_size: NonZeroUsize) -> Result<*mut u8, AllocError> {
+        Err(AllocError::UnsupportedOperation)
+    }
+    unsafe fn shrink(
+        &mut self,
+        _ptr: *mut u8,
+        _current_layout: NonZeroMemBlockLayout,
+        _new_size: NonZeroUsize) -> Result<*mut u8, AllocError> {
+        Err(AllocError::UnsupportedOperation)
+    }
     fn name(&self) -> &'static str;
 }
 

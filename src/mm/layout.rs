@@ -84,6 +84,13 @@ impl NonZeroMemBlockLayout {
         }
     }
 
+    pub fn from_parts(
+        size: NonZeroUsize,
+        align: Pow2Usize) -> NonZeroMemBlockLayout {
+        NonZeroMemBlockLayout { size, align }
+    }
+
+
     pub fn from_type<T: Sized>() -> Self {
         NonZeroMemBlockLayout::new(&MemBlockLayout::from_type::<T>()).unwrap()
     }

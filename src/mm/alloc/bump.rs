@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use crate::num::NonZeroUsize;
 use crate::num::usize_align_up;
 use crate::mm::layout::NonZeroMemBlockLayout;
 use super::AllocError;
@@ -20,6 +21,16 @@ impl<'a> BumpRawAllocator<'a> {
             lifetime: PhantomData
         }
     }
+    fn is_last_allocation(
+        &self,
+        ptr: *mut u8,
+        layout: &NonZeroMemBlockLayout) -> bool {
+        self.begin_addr == (ptr as usize) + layout.size_as_usize()
+    }
+    fn unallocated_size(&self) -> usize {
+        self.end_addr - self.begin_addr
+    }
+
 }
 
 unsafe impl<'a> RawAllocator for BumpRawAllocator<'a> {
@@ -46,8 +57,29 @@ unsafe impl<'a> RawAllocator for BumpRawAllocator<'a> {
         ptr: *mut u8,
         layout: NonZeroMemBlockLayout
     ) {
-        if self.begin_addr == (ptr as usize) + layout.size_as_usize() {
+        if self.is_last_allocation(ptr, &layout) {
             self.begin_addr = ptr as usize;
+        }
+    }
+    unsafe fn grow(
+        &mut self,
+        ptr: *mut u8,
+        current_layout: NonZeroMemBlockLayout,
+        new_size: NonZeroUsize) -> Result<*mut u8, AllocError> {
+        let unallocated_size = self.unallocated_size();
+        if self.is_last_allocation(ptr, &current_layout)
+            && new_size.get() - current_layout.size_as_usize()
+                <= unallocated_size {
+            self.begin_addr += new_size.get() - current_layout.size_as_usize();
+            Ok(ptr)
+        } else {
+            let new_layout = NonZeroMemBlockLayout::from_parts(
+                new_size, current_layout.align());
+            let new_ptr = self.alloc(new_layout)?;
+            unsafe {
+                core::ptr::copy(ptr, new_ptr, current_layout.size_as_usize())
+            };
+            Ok(new_ptr)
         }
     }
     fn name(&self) -> &'static str { "BumpAllocator" }
@@ -119,8 +151,29 @@ mod tests {
             *o = 0xA5u8;
             assert_eq!(*o, 0xA5u8);
         }
-
     }
+
+    #[test]
+    fn grow_last_allocation_succeeds() {
+        panic!("todo");
+    }
+
+    #[test]
+    fn grow_last_allocation_fails() {
+        panic!("todo");
+    }
+
+    #[test]
+    fn grow_by_doing_a_new_allocation_succeeds() {
+        panic!("todo");
+    }
+
+    #[test]
+    fn fail_to_grow_by_reallocation() {
+        panic!("todo");
+    }
+
+
 
 }
 
