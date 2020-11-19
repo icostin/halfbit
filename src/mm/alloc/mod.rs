@@ -114,6 +114,9 @@ impl<'a, T> DerefMut for Box<'a, T> {
 pub mod null;
 pub mod bump;
 
+#[cfg(feature = "use-libc")]
+pub mod libc;
+
 #[cfg(test)]
 mod tests {
     use super::*;
