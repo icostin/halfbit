@@ -76,9 +76,7 @@ unsafe impl<'a> RawAllocator for BumpRawAllocator<'a> {
             let new_layout = NonZeroMemBlockLayout::from_parts(
                 new_size, current_layout.align());
             let new_ptr = self.alloc(new_layout)?;
-            unsafe {
-                core::ptr::copy(ptr, new_ptr, current_layout.size_as_usize())
-            };
+            core::ptr::copy(ptr, new_ptr, current_layout.size_as_usize());
             Ok(new_ptr)
         }
     }
@@ -155,25 +153,56 @@ mod tests {
 
     #[test]
     fn grow_last_allocation_succeeds() {
-        panic!("todo");
+        let mut buffer = [0xAAu8; 2];
+        let mut ra = BumpRawAllocator::new(&mut buffer);
+        let p1 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
+        unsafe { *p1 = 0x99u8 };
+        let p2 = unsafe { ra.grow(p1, NonZeroMemBlockLayout::from_type::<u8>(),
+            NonZeroUsize::new(2usize).unwrap()) }.unwrap();
+        let s = unsafe { core::slice::from_raw_parts(p2, 2usize) };
+        assert_eq!(s, [0x99u8, 0xAAu8]);
     }
 
     #[test]
     fn grow_last_allocation_fails() {
-        panic!("todo");
+        let mut buffer = [0xAAu8; 2];
+        let mut ra = BumpRawAllocator::new(&mut buffer);
+        let p1 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
+        unsafe { *p1 = 0x99u8 };
+        let e2 = unsafe { ra.grow(p1, NonZeroMemBlockLayout::from_type::<u8>(),
+            NonZeroUsize::new(3usize).unwrap()) }.unwrap_err();
+        assert_eq!(e2, AllocError::NotEnoughMemory);
     }
 
     #[test]
     fn grow_by_doing_a_new_allocation_succeeds() {
-        panic!("todo");
+        let mut buffer = [0xAAu8; 4];
+        let mut ra = BumpRawAllocator::new(&mut buffer);
+        let p1 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
+        unsafe { *p1 = 0x5Au8 };
+        let p2 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
+        unsafe { *p2 = 0xA5u8 };
+        let p3 = unsafe { ra.grow(p1, NonZeroMemBlockLayout::from_type::<u8>(),
+            NonZeroUsize::new(2usize).unwrap()) }.unwrap();
+        let s = unsafe { core::slice::from_raw_parts(p3, 2usize) };
+        assert_eq!(s, [0x5Au8, 0xAAu8]);
+        assert_eq!(unsafe { *p2 }, 0xA5u8);
     }
 
     #[test]
     fn fail_to_grow_by_reallocation() {
-        panic!("todo");
+        let mut buffer = [0xAAu8; 4];
+        let mut ra = BumpRawAllocator::new(&mut buffer);
+        let p1 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
+        unsafe { *p1 = 0x5Au8 };
+        let p2 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
+        unsafe { *p2 = 0xA5u8 };
+        let e3 = unsafe { ra.grow(p1, NonZeroMemBlockLayout::from_type::<u8>(),
+            NonZeroUsize::new(3usize).unwrap()) }.unwrap_err();
+        assert_eq!(e3, AllocError::NotEnoughMemory);
+        assert_eq!(unsafe { *p1 }, 0x5Au8);
+        assert_eq!(unsafe { *p2 }, 0xA5u8);
     }
-
-
 
 }
 
