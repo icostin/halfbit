@@ -2,8 +2,7 @@ use core::marker::PhantomData;
 use crate::num::NonZeroUsize;
 use crate::num::usize_align_up;
 use crate::mm::layout::NonZeroMemBlockLayout;
-use super::AllocError;
-use super::RawAllocator;
+use super::{ RawAllocator, AllocError };
 
 pub struct BumpRawAllocator<'a> {
     begin_addr: usize,
@@ -143,7 +142,7 @@ mod tests {
     fn dropping_last_allocation_reclaims_memory() {
         let mut buffer = [0u8; 1];
         let ra = BumpRawAllocator::new(&mut buffer);
-        let a = AllocatorRef::new(&ra);
+        let a = ra.to_ref();
         {
             let r = a.alloc(42u8);
             assert!(r.is_ok());
@@ -233,7 +232,7 @@ mod tests {
         let mut buffer = [0xAAu8; 4];
         let mut ra = BumpRawAllocator::new(&mut buffer);
         let p1 = ra.alloc(NonZeroMemBlockLayout::from_type::<[u8; 2usize]>()).unwrap();
-        let mut s = unsafe { core::slice::from_raw_parts_mut(p1, 2usize) };
+        let s = unsafe { core::slice::from_raw_parts_mut(p1, 2usize) };
         s[0] = 0x5Au8;
         s[1] = 0xA5u8;
         let p2 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();

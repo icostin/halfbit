@@ -53,9 +53,11 @@ pub unsafe trait RawAllocator {
         Err(AllocError::UnsupportedOperation)
     }
     fn name(&self) -> &'static str;
+    fn to_ref(&self) -> AllocatorRef where Self: Sized { AllocatorRef::new(self) }
 }
 
 /* AllocatorRef *************************************************************/
+#[derive(Copy, Clone)]
 pub struct AllocatorRef<'a> {
     raw_allocator: &'a (dyn RawAllocator + 'a)
 }
@@ -126,7 +128,12 @@ impl<'a, T> DerefMut for Box<'a, T> {
     }
 }
 
+pub mod vector;
+pub use self::vector::Vector;
+
 pub mod null;
+pub use self::null::NullRawAllocator;
+
 pub mod bump;
 
 #[cfg(feature = "use-libc")]

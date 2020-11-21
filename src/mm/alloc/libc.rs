@@ -38,7 +38,6 @@ unsafe impl RawAllocator for MallocRawAllocator {
     fn name(&self) -> &'static str { "Malloc" }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

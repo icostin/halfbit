@@ -1,6 +1,5 @@
 use crate::mm::layout::NonZeroMemBlockLayout;
-use super::AllocError;
-use super::RawAllocator;
+use super::{ RawAllocator, AllocError };
 
 pub struct NullRawAllocator { }
 
