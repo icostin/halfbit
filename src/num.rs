@@ -22,7 +22,7 @@ impl Pow2Usize {
         }
     }
 
-    pub fn get(self) -> usize {
+    pub fn get(&self) -> usize {
         self.0.get()
     }
 
@@ -57,6 +57,19 @@ impl Pow2Usize {
             Pow2Usize::new(self.get().wrapping_shr(count))
         }
     }
+
+    pub fn from_lesser_or_equal_usize(n: usize) -> Option<Self> {
+        let mut p = Self::one();
+        while  n > p.get() {
+           if let Some(q) = p.next() {
+               p = q;
+           } else {
+               return None;
+           }
+        }
+        Some(p)
+    }
+
 }
 
 use core::num::Wrapping;
@@ -124,5 +137,49 @@ mod tests {
     fn pow2usize_1_shr_overflow_counter() {
         assert!(Pow2Usize::new(2).unwrap().shr(0x80).is_none());
     }
+
+    #[test]
+    fn pow2usize_from_lesser_0() {
+        assert_eq!(
+            Pow2Usize::from_lesser_or_equal_usize(0usize).unwrap().get(),
+            1usize);
+    }
+
+    #[test]
+    fn pow2usize_from_lesser_or_equal_1() {
+        assert_eq!(
+            Pow2Usize::from_lesser_or_equal_usize(1usize).unwrap().get(),
+            1usize);
+    }
+
+    #[test]
+    fn pow2usize_from_lesser_or_equal_2() {
+        assert_eq!(
+            Pow2Usize::from_lesser_or_equal_usize(2usize).unwrap().get(),
+            2usize);
+    }
+
+    #[test]
+    fn pow2usize_from_lesser_or_equal_3() {
+        assert_eq!(
+            Pow2Usize::from_lesser_or_equal_usize(3usize).unwrap().get(),
+            4usize);
+    }
+
+    #[test]
+    fn pow2usize_from_lesser_or_equal_max_pow2() {
+        assert_eq!(
+            Pow2Usize::from_lesser_or_equal_usize(Pow2Usize::max().get())
+                .unwrap().get(),
+            Pow2Usize::max().get());
+    }
+
+    #[test]
+    fn pow2usize_from_lesser_or_equal_max_pow2_plus_1() {
+        assert!(
+            Pow2Usize::from_lesser_or_equal_usize(Pow2Usize::max().get() + 1)
+                .is_none());
+    }
+
 }
 

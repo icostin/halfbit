@@ -2,7 +2,7 @@ use core::ptr;
 use core::mem;
 use core::ops::{ Drop, Deref, DerefMut };
 use super::layout::MemBlockLayoutError;
-use super::layout::NonZeroMemBlockLayout;
+use super::layout::{ MemBlockLayout, NonZeroMemBlockLayout };
 use core::num::NonZeroUsize;
 
 /* AllocError ***************************************************************/
@@ -135,6 +135,7 @@ pub mod null;
 pub use self::null::NullRawAllocator;
 
 pub mod bump;
+pub use self::bump::BumpRawAllocator;
 
 #[cfg(feature = "use-libc")]
 pub mod libc;
