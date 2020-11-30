@@ -233,7 +233,7 @@ mod tests {
         let mut buffer = [0xAAu8; 4];
         let mut ra = BumpRawAllocator::new(&mut buffer);
         let p1 = ra.alloc(NonZeroMemBlockLayout::from_type::<[u8; 2usize]>()).unwrap();
-        let mut s = unsafe { core::slice::from_raw_parts_mut(p1, 2usize) };
+        let s = unsafe { core::slice::from_raw_parts_mut(p1, 2usize) };
         s[0] = 0x5Au8;
         s[1] = 0xA5u8;
         let p2 = ra.alloc(NonZeroMemBlockLayout::from_type::<u8>()).unwrap();
