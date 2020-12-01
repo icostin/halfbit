@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use crate::num::NonZeroUsize;
 use crate::num::usize_align_up;
-use crate::mm::layout::NonZeroMemBlockLayout;
+use crate::mm_v0::layout::NonZeroMemBlockLayout;
 use super::AllocError;
 use super::RawAllocator;
 

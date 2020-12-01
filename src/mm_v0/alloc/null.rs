@@ -1,4 +1,4 @@
-use crate::mm::layout::NonZeroMemBlockLayout;
+use crate::mm_v0::layout::NonZeroMemBlockLayout;
 use super::AllocError;
 use super::RawAllocator;
 
