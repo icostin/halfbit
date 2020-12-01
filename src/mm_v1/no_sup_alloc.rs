@@ -4,6 +4,7 @@ use crate::num::{
 };
 
 use super::{
+    NonNull,
     AllocError,
     Allocator,
 };
@@ -15,30 +16,30 @@ unsafe impl Allocator for NoSupAllocator {
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<*mut u8, AllocError> {
+    ) -> Result<NonNull<u8>, AllocError> {
         Err(AllocError::UnsupportedOperation)
     }
     unsafe fn grow(
         &self,
-        _ptr: *mut u8,
+        _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
         _new_larger_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<*mut u8, AllocError> {
+    ) -> Result<NonNull<u8>, AllocError> {
         panic!("cannot grow what hasn't been allocated!");
     }
     unsafe fn shrink(
         &self,
-        _ptr: *mut u8,
+        _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
         _new_smaller_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<*mut u8, AllocError> {
+    ) -> Result<NonNull<u8>, AllocError> {
         panic!("cannot shrink what hasn't been allocated!");
     }
     unsafe fn free(
         &self,
-        _ptr: *mut u8,
+        _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
         _align: Pow2Usize) {
         panic!("cannot free what hasn't been allocated!");
@@ -48,7 +49,7 @@ unsafe impl Allocator for NoSupAllocator {
     }
     fn contains(
         &self,
-        _ptr: *mut u8
+        _ptr: NonNull<u8>
     ) -> bool {
         false
     }
@@ -86,7 +87,7 @@ mod tests {
         let a = no_sup_allocator();
         unsafe {
             a.free(
-                core::ptr::null_mut::<u8>(),
+                NonNull::dangling(),
                 NonZeroUsize::new(1).unwrap(),
                 Pow2Usize::new(1).unwrap()
             );
@@ -99,7 +100,7 @@ mod tests {
         let a = no_sup_allocator();
         unsafe {
             a.grow(
-                core::ptr::null_mut::<u8>(),
+                NonNull::dangling(),
                 NonZeroUsize::new(1).unwrap(),
                 NonZeroUsize::new(2).unwrap(),
                 Pow2Usize::new(1).unwrap()
@@ -113,7 +114,7 @@ mod tests {
         let a = no_sup_allocator();
         unsafe {
             a.shrink(
-                core::ptr::null_mut::<u8>(),
+                NonNull::dangling(),
                 NonZeroUsize::new(2).unwrap(),
                 NonZeroUsize::new(1).unwrap(),
                 Pow2Usize::new(1).unwrap()
@@ -130,7 +131,7 @@ mod tests {
     #[test]
     fn no_sup_allocator_returns_false_for_contains() {
         let a = no_sup_allocator();
-        assert_eq!(a.contains(core::ptr::null_mut::<u8>()), false);
+        assert_eq!(a.contains(NonNull::dangling()), false);
     }
 }
 

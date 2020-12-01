@@ -1,3 +1,5 @@
+pub use core::ptr::NonNull;
+
 use crate::num::{
     NonZeroUsize,
     Pow2Usize,
@@ -20,30 +22,30 @@ pub unsafe trait Allocator {
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<*mut u8, AllocError> {
+    ) -> Result<NonNull<u8>, AllocError> {
         Err(AllocError::NotImplemented)
     }
     unsafe fn grow(
         &self,
-        _ptr: *mut u8,
+        _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
         _new_larger_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<*mut u8, AllocError> {
+    ) -> Result<NonNull<u8>, AllocError> {
         Err(AllocError::NotImplemented)
     }
     unsafe fn shrink(
         &self,
-        _ptr: *mut u8,
+        _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
         _new_smaller_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<*mut u8, AllocError> {
+    ) -> Result<NonNull<u8>, AllocError> {
         Err(AllocError::NotImplemented)
     }
     unsafe fn free(
         &self,
-        _ptr: *mut u8,
+        _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
         _align: Pow2Usize) {
     }
@@ -52,7 +54,7 @@ pub unsafe trait Allocator {
     }
     fn contains(
         &self,
-        _ptr: *mut u8
+        _ptr: NonNull<u8>
     ) -> bool {
         false
     }
