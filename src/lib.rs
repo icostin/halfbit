@@ -1,8 +1,9 @@
 #![no_std]
 
 pub mod num;
-pub mod mm_v0; // memory manager
-pub use mm_v0 as mm;
+pub mod mm_v0; // memory manager v0
+pub mod mm_v1; // memory manager v1
+pub use mm_v1 as mm;
 
 pub fn lib_name() -> &'static str {
     "halfbit"
