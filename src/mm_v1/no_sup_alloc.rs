@@ -19,6 +19,13 @@ unsafe impl Allocator for NoSupAllocator {
     ) -> Result<NonNull<u8>, AllocError> {
         Err(AllocError::UnsupportedOperation)
     }
+    unsafe fn free(
+        &self,
+        _ptr: NonNull<u8>,
+        _current_size: NonZeroUsize,
+        _align: Pow2Usize) {
+        panic!("cannot free what hasn't been allocated!");
+    }
     unsafe fn grow(
         &self,
         _ptr: NonNull<u8>,
@@ -36,13 +43,6 @@ unsafe impl Allocator for NoSupAllocator {
         _align: Pow2Usize
     ) -> Result<NonNull<u8>, AllocError> {
         panic!("cannot shrink what hasn't been allocated!");
-    }
-    unsafe fn free(
-        &self,
-        _ptr: NonNull<u8>,
-        _current_size: NonZeroUsize,
-        _align: Pow2Usize) {
-        panic!("cannot free what hasn't been allocated!");
     }
     fn supports_contains(&self) -> bool {
         true
@@ -104,8 +104,8 @@ mod tests {
                 NonZeroUsize::new(1).unwrap(),
                 NonZeroUsize::new(2).unwrap(),
                 Pow2Usize::new(1).unwrap()
-            );
-        }
+            )
+        }.unwrap_or(NonNull::dangling());
     }
 
     #[test]
@@ -118,8 +118,8 @@ mod tests {
                 NonZeroUsize::new(2).unwrap(),
                 NonZeroUsize::new(1).unwrap(),
                 Pow2Usize::new(1).unwrap()
-            );
-        }
+            )
+        }.unwrap_or(NonNull::dangling());
     }
 
     #[test]
