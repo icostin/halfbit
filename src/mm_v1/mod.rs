@@ -82,6 +82,9 @@ impl AllocatorRef<'_> {
 pub mod no_sup_alloc;
 pub use no_sup_alloc::no_sup_allocator as no_sup_allocator;
 
+pub mod single_alloc;
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,3 +168,4 @@ mod tests {
     }
 
 }
+
