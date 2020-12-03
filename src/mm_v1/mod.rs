@@ -71,11 +71,51 @@ pub struct AllocatorRef<'a> {
     allocator: &'a (dyn Allocator + 'a)
 }
 
-impl AllocatorRef<'_> {
-    pub fn name(&self) -> &'static str {
+unsafe impl<'a> Allocator for AllocatorRef<'a> {
+    fn alloc(
+        &self,
+        size: NonZeroUsize,
+        align: Pow2Usize
+    ) -> Result<NonNull<u8>, AllocError> {
+        self.allocator.alloc(size, align)
+    }
+    unsafe fn free(
+        &self,
+        ptr: NonNull<u8>,
+        size: NonZeroUsize,
+        align: Pow2Usize) {
+        self.allocator.free(ptr, size, align);
+    }
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        current_size: NonZeroUsize,
+        new_larger_size: NonZeroUsize,
+        align: Pow2Usize
+    ) -> Result<NonNull<u8>, AllocError> {
+        self.allocator.grow(ptr, current_size, new_larger_size, align)
+    }
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        current_size: NonZeroUsize,
+        new_smaller_size: NonZeroUsize,
+        align: Pow2Usize
+    ) -> Result<NonNull<u8>, AllocError> {
+        self.allocator.shrink(ptr, current_size, new_smaller_size, align)
+    }
+    fn supports_contains(&self) -> bool {
+        self.allocator.supports_contains()
+    }
+    fn contains(
+        &self,
+        ptr: NonNull<u8>
+    ) -> bool {
+        self.allocator.contains(ptr)
+    }
+    fn name(&self) -> &'static str {
         self.allocator.name()
     }
-
 }
 
 
@@ -85,6 +125,8 @@ pub use no_sup_alloc::no_sup_allocator as no_sup_allocator;
 pub mod single_alloc;
 pub use single_alloc::SingleAlloc as SingleAlloc;
 
+pub mod r#box;
+pub use r#box::Box as Box;
 
 #[cfg(test)]
 mod tests {
