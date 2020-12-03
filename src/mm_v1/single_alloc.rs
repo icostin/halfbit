@@ -137,6 +137,11 @@ unsafe impl<'a> Allocator for SingleAlloc<'a> {
     }
 }
 
+pub fn single_alloc(buffer: &mut [u8]) -> SingleAlloc {
+    SingleAlloc::new(buffer)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
