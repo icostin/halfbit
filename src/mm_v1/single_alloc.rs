@@ -28,6 +28,13 @@ impl<'a> SingleAlloc<'a> {
             }.into(),
         }
     }
+    pub fn is_in_use(&self) -> bool {
+        let state: &'a SingleAllocState<'a> = unsafe {
+            &*(self.state.get() as *mut SingleAllocState<'a>)
+        };
+        state.used != 0
+    }
+
     fn check_allocation(
         &self,
         ptr: NonNull<u8>,

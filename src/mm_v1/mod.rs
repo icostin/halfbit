@@ -71,6 +71,13 @@ pub struct AllocatorRef<'a> {
     allocator: &'a (dyn Allocator + 'a)
 }
 
+impl<'a> core::fmt::Debug for AllocatorRef<'a> {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>)
+    -> core::result::Result<(), core::fmt::Error> {
+        write!(fmt, "{}@{:X}", self.name(), ((self.allocator as *const dyn Allocator) as *const u8) as usize)
+    }
+}
+
 unsafe impl<'a> Allocator for AllocatorRef<'a> {
     fn alloc(
         &self,
