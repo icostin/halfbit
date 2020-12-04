@@ -28,7 +28,8 @@ pub unsafe trait Allocator {
         &self,
         _ptr: NonNull<u8>,
         _current_size: NonZeroUsize,
-        _align: Pow2Usize) {
+        _align: Pow2Usize
+    ) {
         panic!("free not implemented!");
     }
     unsafe fn grow(
@@ -67,6 +68,7 @@ pub unsafe trait Allocator {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct AllocatorRef<'a> {
     allocator: &'a (dyn Allocator + 'a)
 }
@@ -125,7 +127,6 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
     }
 }
 
-
 pub mod no_sup_alloc;
 pub use no_sup_alloc::no_sup_allocator as no_sup_allocator;
 
@@ -134,6 +135,12 @@ pub use single_alloc::SingleAlloc as SingleAlloc;
 
 pub mod r#box;
 pub use r#box::Box as Box;
+
+impl<'a> AllocatorRef<'a> {
+    pub fn alloc_item<T: Sized>(&'a self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
+        Box::new(*self, v)
+    }
+}
 
 #[cfg(test)]
 mod tests {

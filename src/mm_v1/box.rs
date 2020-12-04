@@ -58,6 +58,7 @@ impl<'a, T> core::ops::Deref for Box<'a, T> {
         unsafe { self.ptr.as_ref() }
     }
 }
+
 impl<'a, T> core::ops::DerefMut for Box<'a, T> {
     fn deref_mut (&mut self) -> &mut Self::Target {
         unsafe { self.ptr.as_mut() }
