@@ -99,4 +99,30 @@ mod tests {
         assert!(!a.is_in_use());
     }
 
+    use core::sync::atomic::{ AtomicUsize, Ordering };
+    struct IncOnDrop<'a> {
+        drop_counter: &'a AtomicUsize,
+    }
+
+    impl<'a> Drop for IncOnDrop<'a> {
+        fn drop(&mut self) {
+            self.drop_counter.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+
+    #[test]
+    fn drop_gets_called_on_boxed_item() {
+        let drop_count = AtomicUsize::new(0);
+        let mut buffer = [0u8; 16];
+        let a = SingleAlloc::new(&mut buffer);
+        {
+            let _b = Box::new(a.to_ref(), IncOnDrop {
+                drop_counter: &drop_count
+            });
+            assert!(a.is_in_use());
+        }
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
+    }
+
 }
