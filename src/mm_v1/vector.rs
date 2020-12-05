@@ -110,6 +110,26 @@ impl<'a, T> Vector<'a, T> {
 
 }
 
+impl<'a, T> Drop for Vector<'a, T> {
+    fn drop(&mut self) {
+        for i in 0..self.len {
+            unsafe {
+                core::ptr::drop_in_place(self.ptr.as_ptr().offset(i as isize));
+            }
+        }
+        if self.cap != 0 {
+            unsafe {
+                self.allocator.free(
+                    self.ptr.cast::<u8>(),
+                    NonZeroUsize::new(core::mem::size_of::<T>() * self.cap)
+                        .unwrap(),
+                    Pow2Usize::new(core::mem::align_of::<T>()).unwrap()
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
