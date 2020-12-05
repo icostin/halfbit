@@ -133,6 +133,9 @@ pub use no_sup_alloc::no_sup_allocator as no_sup_allocator;
 pub mod single_alloc;
 pub use single_alloc::SingleAlloc as SingleAlloc;
 
+pub mod bump_alloc;
+pub use bump_alloc::BumpAllocator as BumpAllocator;
+
 pub mod r#box;
 pub use r#box::Box as Box;
 
