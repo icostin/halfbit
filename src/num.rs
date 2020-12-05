@@ -57,6 +57,18 @@ impl Pow2Usize {
             Pow2Usize::new(self.get().wrapping_shr(count))
         }
     }
+
+    pub fn from_smaller_or_equal_usize(n: usize) -> Option<Self> {
+        let mut p = Self::one();
+        while p.get() < n {
+            match p.next() {
+                Some(q) => p = q,
+                None => return None
+            }
+        }
+        Some(p)
+    }
+
 }
 
 use core::num::Wrapping;

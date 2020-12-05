@@ -44,6 +44,7 @@ impl<'a, T> Box<'a, T> {
 
 impl<'a, T> Drop for Box<'a, T> {
     fn drop(&mut self) {
+        core::mem::drop(unsafe { &mut *self.ptr.as_ptr() });
         let size = core::mem::size_of::<T>();
         if size == 0 { return; }
         let size = NonZeroUsize::new(size).unwrap();

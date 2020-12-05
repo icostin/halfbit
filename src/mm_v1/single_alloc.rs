@@ -53,7 +53,6 @@ impl<'a> SingleAlloc<'a> {
         } else if ((state.buffer.as_ptr() as usize) & (align.get() - 1)) != 0 {
             panic!("bad alignment");
         }
-
     }
 }
 

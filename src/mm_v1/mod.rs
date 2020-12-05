@@ -136,9 +136,34 @@ pub use single_alloc::SingleAlloc as SingleAlloc;
 pub mod r#box;
 pub use r#box::Box as Box;
 
+pub mod vector;
+pub use vector::Vector as Vector;
+
 impl<'a> AllocatorRef<'a> {
     pub fn alloc_item<T: Sized>(&'a self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
         Box::new(*self, v)
+    }
+
+    pub fn vector<T: Sized>(&'a self) -> Vector<'a, T> {
+        Vector::new(*self)
+    }
+
+    pub unsafe fn alloc_or_grow(
+        &'a self,
+        ptr: NonNull<u8>,
+        current_size: usize,
+        new_larger_size: NonZeroUsize,
+        align: Pow2Usize
+    ) -> Result<NonNull<u8>, AllocError> {
+        if current_size == 0 {
+            self.alloc(new_larger_size, align)
+        } else {
+            self.grow(
+                ptr,
+                NonZeroUsize::new(current_size).unwrap(),
+                new_larger_size,
+                align)
+        }
     }
 }
 
