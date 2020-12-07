@@ -43,7 +43,7 @@ unsafe impl RawAllocator for MallocRawAllocator {
 mod tests {
     use super::*;
     use super::super::*;
-    use crate::mm::layout::MemBlockLayout;
+    use crate::mm_v0::layout::MemBlockLayout;
 
     #[test]
     fn malloc_1_byte() {
