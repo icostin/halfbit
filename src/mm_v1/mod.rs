@@ -125,6 +125,10 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
     fn name(&self) -> &'static str {
         self.allocator.name()
     }
+    fn to_ref(&self) -> AllocatorRef
+    where Self: Sized {
+        *self
+    }
 }
 
 pub mod no_sup_alloc;
@@ -143,8 +147,8 @@ pub mod vector;
 pub use vector::Vector as Vector;
 
 impl<'a> AllocatorRef<'a> {
-    pub fn alloc_item<T: Sized>(&'a self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
-        Box::new(*self, v)
+    pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
+        Box::new(self, v)
     }
 
     pub fn vector<T: Sized>(&'a self) -> Vector<'a, T> {

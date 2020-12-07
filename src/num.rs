@@ -1,4 +1,5 @@
 extern crate num;
+use core::ptr::NonNull;
 
 pub fn is_power_of_2<T> (n: T) -> bool
     where T: num::traits::Unsigned + num::traits::int::PrimInt {
@@ -69,6 +70,25 @@ impl Pow2Usize {
         Some(p)
     }
 
+    pub fn rmask (&self) -> usize {
+        self.0.get() - 1
+    }
+
+    pub fn lmask(&self) -> usize {
+        !self.rmask()
+    }
+
+    pub fn is_aligned(&self, v: usize) -> bool {
+        v & self.rmask() == 0
+    }
+
+    pub fn is_ptr_aligned<T>(&self, ptr: *const T) -> bool {
+        self.is_aligned(ptr as usize)
+    }
+
+    pub fn is_non_null_ptr_aligned<T>(&self, nnptr: NonNull<T>) -> bool {
+        self.is_ptr_aligned(nnptr.as_ptr())
+    }
 }
 
 use core::num::Wrapping;
