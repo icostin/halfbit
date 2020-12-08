@@ -156,5 +156,42 @@ mod tests {
     fn pow2usize_1_shr_overflow_counter() {
         assert!(Pow2Usize::new(2).unwrap().shr(0x80).is_none());
     }
+
+    #[test]
+    fn from_smaller_or_equal_usize_0() {
+        assert_eq!(Pow2Usize::from_smaller_or_equal_usize(0).unwrap().get(), 1);
+    }
+
+    #[test]
+    fn from_smaller_or_equal_usize_1() {
+        assert_eq!(Pow2Usize::from_smaller_or_equal_usize(1).unwrap().get(), 1);
+    }
+
+    #[test]
+    fn from_smaller_equal_usize_3() {
+        assert_eq!(Pow2Usize::from_smaller_or_equal_usize(3).unwrap().get(), 4);
+    }
+
+    #[test]
+    fn from_smaller_or_equal_usize_max_pow2() {
+        let m = Pow2Usize::max().get();
+        assert_eq!(Pow2Usize::from_smaller_or_equal_usize(m).unwrap().get(), m);
+    }
+
+    #[test]
+    fn from_smaller_or_equal_usize_over_max_pow2() {
+        let m = Pow2Usize::max().get() + 1;
+        assert!(Pow2Usize::from_smaller_or_equal_usize(m).is_none());
+    }
+
+    #[test]
+    fn lmask_1() {
+        assert_eq!(Pow2Usize::one().lmask(), usize::MAX);
+    }
+
+    #[test]
+    fn rmask_1() {
+        assert_eq!(Pow2Usize::one().rmask(), 0);
+    }
 }
 
