@@ -140,6 +140,11 @@ pub use single_alloc::SingleAlloc as SingleAlloc;
 pub mod bump_alloc;
 pub use bump_alloc::BumpAllocator as BumpAllocator;
 
+#[cfg(feature = "use-libc")]
+pub mod libc_malloc;
+#[cfg(feature = "use-libc")]
+pub use libc_malloc::Malloc as Malloc;
+
 pub mod r#box;
 pub use r#box::Box as Box;
 
