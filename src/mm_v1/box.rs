@@ -32,10 +32,7 @@ impl<'a, T> Box<'a, T> {
             Ok(ptr) => {
                 let ptr = ptr.cast::<T>();
                 unsafe { core::ptr::write(ptr.as_ptr(), value) };
-                Ok(Box {
-                    allocator: allocator,
-                    ptr: ptr,
-                })
+                Ok(Box { allocator: allocator, ptr: ptr })
             },
             Err(e) => Err((e, value))
         }
