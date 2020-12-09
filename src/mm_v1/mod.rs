@@ -16,6 +16,13 @@ pub enum AllocError {
     UnsupportedOperation, // alloc, resize, free not supported
 }
 
+impl From<AllocError> for core::fmt::Error {
+    fn from(e: AllocError) -> Self {
+        Self { }
+    }
+}
+
+
 pub unsafe trait Allocator {
     fn alloc(
         &self,

@@ -12,16 +12,19 @@ pub struct String<'a> {
 
 impl<'a> String<'a> {
     pub fn new(allocator: AllocatorRef<'a>) -> String<'a> {
-        panic!("to do")
+        String {
+            data: Vector::new(allocator)
+        }
     }
     pub fn as_str(&self) -> &str {
-        panic!("to do")
+        unsafe { core::str::from_utf8_unchecked(self.data.as_slice()) }
     }
 }
 
 impl FmtWrite for String<'_> {
     fn write_str(&mut self, s: &str) -> FmtResult {
-        panic!("to do")
+        self.data.append_from_slice(s.as_bytes())?;
+        Ok(())
     }
 }
 
@@ -35,7 +38,7 @@ mod tests {
         let mut buffer = [0; 256];
         let mut a = BumpAllocator::new(&mut buffer);
         let mut s = String::new(a.to_ref());
-        write!(s, "This is {:?}: {} = {:04X}!", "so easy", 1234, 1234);
+        write!(s, "This is {:?}: {} = 0x{:04X}!", "so easy", 1234, 1234);
         assert_eq!(s.as_str(), "This is \"so easy\": 1234 = 0x04D2!");
     }
 }

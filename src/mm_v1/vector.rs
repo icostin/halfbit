@@ -108,6 +108,27 @@ impl<'a, T> Vector<'a, T> {
         }
     }
 
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
+    }
+
+    pub fn append_from_slice(&mut self, src: &[T]) -> Result<(), AllocError>
+    where T: Copy {
+        self.reserve(src.len())?;
+        unsafe {
+            let mut p = self.ptr.as_ptr().offset(self.len as isize);
+            for v in src {
+                core::ptr::write(p, *v);
+                p = p.offset(1);
+            }
+        }
+        self.len += src.len();
+        Ok(())
+    }
 }
 
 impl<'a, T> Drop for Vector<'a, T> {
@@ -196,6 +217,24 @@ mod tests {
         assert_eq!(v.pop().unwrap(), 0xDEF0_u16);
         assert_eq!(v.pop().unwrap(), 0x1234_u16);
     }
+
+    #[test]
+    fn vector_as_slice() {
+        let mut buffer = [0u8; 4];
+        let a = SingleAlloc::new(&mut buffer);
+        let ar = a.to_ref();
+        let mut v = ar.vector::<u16>();
+
+        v.push(0x1234_u16).unwrap();
+        v.push(0x5678_u16).unwrap();
+
+        let s = v.as_slice();
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0], 0x1234);
+        assert_eq!(s[1], 0x5678);
+
+    }
+
 
 }
 
