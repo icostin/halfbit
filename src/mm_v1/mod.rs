@@ -151,6 +151,9 @@ pub use r#box::Box as Box;
 pub mod vector;
 pub use vector::Vector as Vector;
 
+pub mod string;
+pub use string::String as String;
+
 impl<'a> AllocatorRef<'a> {
     pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
         Box::new(self, v)
@@ -260,6 +263,5 @@ mod tests {
         let ar = a.to_ref();
         assert!(ar.name().contains("allocator"));
     }
-
 }
 
