@@ -133,8 +133,8 @@ impl<'a, T> Drop for Vector<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mm_v1::no_sup_allocator;
-    use crate::mm_v1::SingleAlloc;
+    use super::super::no_sup_allocator;
+    use super::super::SingleAlloc;
 
     #[test]
     fn new_vector_is_empty() {
