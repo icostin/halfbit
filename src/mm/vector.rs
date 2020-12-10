@@ -35,6 +35,15 @@ impl<'a, T> Vector<'a, T> {
         }
     }
 
+    pub fn map_slice(slice: &'a [T]) -> Vector<'a, T> {
+        Vector {
+            allocator: NOP_ALLOCATOR.to_ref(),
+            ptr: NonNull::new(slice.as_ptr() as *mut T).unwrap(),
+            len: slice.len(),
+            cap: 0
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -48,21 +57,21 @@ impl<'a, T> Vector<'a, T> {
     }
 
     pub fn reserve(&mut self, count: usize) -> Result<(), AllocError> {
-        if count <= self.cap - self.len {
-            return Ok(());
-        }
         let item_size = core::mem::size_of::<T>();
         debug_assert!(item_size != 0);
-        let item_align = core::mem::align_of::<T>();
         let max_cap = usize::MAX / item_size;
         if count > max_cap - self.len {
             return Err(AllocError::UnsupportedSize);
         }
         let len_needed = self.len + count;
+        if len_needed <= self.len {
+            return Ok(());
+        }
         let mut cap_to_try =
             Pow2Usize::from_smaller_or_equal_usize(len_needed)
             .map(|x| core::cmp::min(x.get(), max_cap))
             .unwrap_or(len_needed);
+        let item_align = core::mem::align_of::<T>();
         loop {
             match unsafe {
                 self.allocator.alloc_or_grow(
@@ -115,7 +124,7 @@ impl<'a, T> Vector<'a, T> {
     }
 
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
+        unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), core::cmp::min(self.len, self.cap)) }
     }
 
     pub fn append_from_slice(&mut self, src: &[T]) -> Result<(), AllocError>
@@ -150,26 +159,6 @@ impl<'a, T> Drop for Vector<'a, T> {
                 );
             }
         }
-    }
-}
-
-pub struct SliceAsVector<'a, T> {
-    vector: Vector<'a, T>,
-}
-
-impl<'a, T> SliceAsVector<'a, T> {
-    pub fn new(slice: &'a [T]) -> SliceAsVector<'a, T> {
-        SliceAsVector {
-            vector: Vector {
-                allocator: NOP_ALLOCATOR.to_ref(),
-                ptr: NonNull::new(slice.as_ptr() as *mut T).unwrap(),
-                len: slice.len(),
-                cap: slice.len(),
-            }
-        }
-    }
-    pub fn get(&self) -> &Vector<'_, T> {
-        &self.vector
     }
 }
 
@@ -241,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn vector_as_slice() {
+    fn get_slice_from_vector() {
         let mut buffer = [0u8; 4];
         let a = SingleAlloc::new(&mut buffer);
         let ar = a.to_ref();
@@ -261,18 +250,23 @@ mod tests {
     fn slice_as_vector_works() {
         let mut x: [u16; 4] = [ 2, 4, 6, 8 ];
         {
-            let sav = SliceAsVector::new(&x);
-            let v = sav.get();
+            let v = Vector::map_slice(&x);
             //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
             assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 6_u16, 8_u16 ]);
         }
         x[2] = 66;
         {
-            let sav = SliceAsVector::new(&x);
-            let v = sav.get();
+            let v = Vector::map_slice(&x);
             //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
             assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 66_u16, 8_u16 ]);
         }
+    }
+
+    #[test]
+    fn mut_slice_from_vector_created_from_slice_must_be_empty() {
+        let x: [u16; 4] = [ 2, 4, 6, 8 ];
+        let mut v = Vector::map_slice(&x);
+        assert_eq!(v.as_mut_slice().len(), 0);
     }
 }
 
