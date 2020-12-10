@@ -66,8 +66,8 @@ impl<'a, T> core::ops::DerefMut for Box<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mm_v1::no_sup_allocator;
-    use crate::mm_v1::SingleAlloc;
+    use super::super::no_sup_allocator;
+    use super::super::SingleAlloc;
 
     #[test]
     fn zero_sized_boxed_payload_works_without_allocating() {
