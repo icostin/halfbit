@@ -16,6 +16,13 @@ pub enum AllocError {
     UnsupportedOperation, // alloc, resize, free not supported
 }
 
+impl From<AllocError> for core::fmt::Error {
+    fn from(_e: AllocError) -> Self {
+        Self { }
+    }
+}
+
+
 pub unsafe trait Allocator {
     fn alloc(
         &self,
@@ -134,6 +141,9 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
 pub mod no_sup_alloc;
 pub use no_sup_alloc::no_sup_allocator as no_sup_allocator;
 
+pub mod nop_alloc;
+pub use nop_alloc::NOP_ALLOCATOR as NOP_ALLOCATOR;
+
 pub mod single_alloc;
 pub use single_alloc::SingleAlloc as SingleAlloc;
 
@@ -150,6 +160,9 @@ pub use r#box::Box as Box;
 
 pub mod vector;
 pub use vector::Vector as Vector;
+
+pub mod string;
+pub use string::String as String;
 
 impl<'a> AllocatorRef<'a> {
     pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
@@ -260,6 +273,5 @@ mod tests {
         let ar = a.to_ref();
         assert!(ar.name().contains("allocator"));
     }
-
 }
 
