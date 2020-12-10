@@ -141,6 +141,9 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
 pub mod no_sup_alloc;
 pub use no_sup_alloc::no_sup_allocator as no_sup_allocator;
 
+pub mod nop_alloc;
+pub use nop_alloc::NOP_ALLOCATOR as NOP_ALLOCATOR;
+
 pub mod single_alloc;
 pub use single_alloc::SingleAlloc as SingleAlloc;
 

@@ -12,11 +12,13 @@ use super::{
 
 #[derive(Debug)]
 pub struct Vector<'a, T> {
-    allocator: AllocatorRef<'a>,
     ptr: NonNull<T>,
     len: usize,
     cap: usize,
+    allocator: AllocatorRef<'a>,
 }
+
+use super::nop_alloc::NOP_ALLOCATOR;
 
 impl<'a, T> Vector<'a, T> {
 
@@ -151,6 +153,26 @@ impl<'a, T> Drop for Vector<'a, T> {
     }
 }
 
+struct SliceAsVector<'a, T> {
+    vector: Vector<'a, T>,
+}
+
+impl<'a, T> SliceAsVector<'a, T> {
+    pub fn new(slice: &'a [T]) -> SliceAsVector<'a, T> {
+        SliceAsVector {
+            vector: Vector {
+                allocator: NOP_ALLOCATOR.to_ref(),
+                ptr: NonNull::new(slice.as_ptr() as *mut T).unwrap(),
+                len: slice.len(),
+                cap: slice.len(),
+            }
+        }
+    }
+    pub fn get(&self) -> &Vector<'_, T> {
+        &self.vector
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +257,21 @@ mod tests {
 
     }
 
-
+    fn slice_as_vector_works() {
+        let mut x: [u16; 4] = [ 2, 4, 6, 8 ];
+        {
+            let sav = SliceAsVector::new(&x);
+            let v = sav.get();
+            //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
+            assert_eq!(v.as_slice(), [ 2_u16, 2_u16, 6_u16, 8_u16 ]);
+        }
+        x[2] = 66;
+        {
+            let sav = SliceAsVector::new(&x);
+            let v = sav.get();
+            //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
+            assert_eq!(v.as_slice(), [ 2_u16, 2_u16, 66_u16, 8_u16 ]);
+        }
+    }
 }
 
