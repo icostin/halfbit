@@ -17,7 +17,7 @@ pub enum AllocError {
 }
 
 impl From<AllocError> for core::fmt::Error {
-    fn from(e: AllocError) -> Self {
+    fn from(_e: AllocError) -> Self {
         Self { }
     }
 }

@@ -1,7 +1,5 @@
 use super::Vector;
-use super::Allocator;
 use super::AllocatorRef;
-use super::AllocError;
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
 
@@ -36,9 +34,9 @@ mod tests {
     #[test]
     fn simple_fmt_test() {
         let mut buffer = [0; 256];
-        let mut a = BumpAllocator::new(&mut buffer);
+        let a = BumpAllocator::new(&mut buffer);
         let mut s = String::new(a.to_ref());
-        write!(s, "This is {:?}: {} = 0x{:04X}!", "so easy", 1234, 1234);
+        write!(s, "This is {:?}: {} = 0x{:04X}!", "so easy", 1234, 1234).unwrap();
         assert_eq!(s.as_str(), "This is \"so easy\": 1234 = 0x04D2!");
     }
 }

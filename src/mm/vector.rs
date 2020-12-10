@@ -153,7 +153,7 @@ impl<'a, T> Drop for Vector<'a, T> {
     }
 }
 
-struct SliceAsVector<'a, T> {
+pub struct SliceAsVector<'a, T> {
     vector: Vector<'a, T>,
 }
 
@@ -257,20 +257,21 @@ mod tests {
 
     }
 
+    #[test]
     fn slice_as_vector_works() {
         let mut x: [u16; 4] = [ 2, 4, 6, 8 ];
         {
             let sav = SliceAsVector::new(&x);
             let v = sav.get();
             //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
-            assert_eq!(v.as_slice(), [ 2_u16, 2_u16, 6_u16, 8_u16 ]);
+            assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 6_u16, 8_u16 ]);
         }
         x[2] = 66;
         {
             let sav = SliceAsVector::new(&x);
             let v = sav.get();
             //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
-            assert_eq!(v.as_slice(), [ 2_u16, 2_u16, 66_u16, 8_u16 ]);
+            assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 66_u16, 8_u16 ]);
         }
     }
 }
