@@ -46,14 +46,13 @@ impl<'a> BumpAllocator<'a> {
 }
 
 unsafe impl<'a> Allocator for BumpAllocator<'a> {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
     ) -> Result<NonNull<u8>, AllocError> {
-        let state: &'a mut BumpAllocatorState<'a> = unsafe {
-            &mut *(self.state.get() as *mut BumpAllocatorState<'a>)
-        };
+        let state: &'a mut BumpAllocatorState<'a> =
+            &mut *(self.state.get() as *mut BumpAllocatorState<'a>);
         usize_align_up(state.current_addr, align)
             .map_or(None, |v| v.checked_add(size.get()))
             .map_or(None, |v| if v <= state.end_addr {
@@ -155,8 +154,9 @@ mod tests {
         let mut buffer = [0_u8; 1];
         let a = BumpAllocator::new(&mut buffer);
         assert_eq!(
-            a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one())
-                .unwrap().as_ptr(),
+            unsafe {
+                a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one())
+            }.unwrap().as_ptr(),
             buffer.as_mut_ptr());
     }
 
@@ -165,8 +165,9 @@ mod tests {
         let mut buffer = [0_u8; 1];
         let a = BumpAllocator::new(&mut buffer);
         assert_eq!(
-            a.alloc(NonZeroUsize::new(2).unwrap(), Pow2Usize::one())
-                .unwrap_err(),
+            unsafe {
+                a.alloc(NonZeroUsize::new(2).unwrap(), Pow2Usize::one())
+            }.unwrap_err(),
             AllocError::NotEnoughMemory);
     }
 
@@ -193,10 +194,12 @@ mod tests {
     fn grow_last_allocation_succeeds() {
         let mut buffer = [0xAA_u8; 2];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x99_u8 };
         let p2 = unsafe {
             a.grow(
@@ -213,10 +216,12 @@ mod tests {
     fn grow_last_allocation_fails() {
         let mut buffer = [0xAA_u8; 2];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x99_u8 };
         let e2 = unsafe {
             a.grow(p1,
@@ -231,15 +236,19 @@ mod tests {
     fn grow_by_doing_a_new_allocation_succeeds() {
         let mut buffer = [0xAA_u8; 4];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x5A_u8 };
-        let p2 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p2 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p2.as_ptr() = 0xA5_u8 };
         let p3 = unsafe {
             a.grow(
@@ -257,15 +266,17 @@ mod tests {
     fn fail_to_grow_by_reallocation() {
         let mut buffer = [0xAA_u8; 4];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x5A_u8 };
-        let p2 = a.alloc(
+        let p2 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p2.as_ptr() = 0xA5_u8 };
         let e3 = unsafe {
             a.grow(
@@ -283,10 +294,10 @@ mod tests {
     fn shrink_last_allocation_reclaims_memory() {
         let mut buffer = [0xAA_u8; 2];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
+        let p1 = unsafe { a.alloc(
             NonZeroUsize::new(2).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p1.as_ptr() = 0x12_u8 };
         let p2 = unsafe {
             a.shrink(
@@ -296,10 +307,10 @@ mod tests {
                 Pow2Usize::one())
         }.unwrap();
         assert_eq!(unsafe { *p2.as_ptr() }, 0x12_u8);
-        let p3 = a.alloc(
+        let p3 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         assert_eq!(p3.as_ptr(), unsafe { p2.as_ptr().offset(1) });
     }
 
@@ -307,16 +318,16 @@ mod tests {
     fn shrink_non_last_allocation() {
         let mut buffer = [0xAA_u8; 4];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
+        let p1 = unsafe { a.alloc(
             NonZeroUsize::new(2).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p1.as_ptr() = 0x5A_u8 };
         unsafe { *p1.as_ptr().offset(1) = 0xA5_u8 };
-        let p2 = a.alloc(
+        let p2 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p2.as_ptr() = 0xBB_u8 };
         let p3 = unsafe {
             a.shrink(

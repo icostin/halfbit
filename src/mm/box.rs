@@ -25,7 +25,7 @@ impl<'a, T> Box<'a, T> {
 
         let size = NonZeroUsize::new(size).unwrap();
         let align = Pow2Usize::new(core::mem::align_of::<T>()).unwrap();
-        match allocator.alloc(size, align) {
+        match unsafe { allocator.alloc(size, align) } {
             Ok(ptr) => {
                 let ptr = ptr.cast::<T>();
                 unsafe { core::ptr::write(ptr.as_ptr(), value) };

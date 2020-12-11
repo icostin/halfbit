@@ -9,7 +9,7 @@ pub struct NopAllocator { }
 pub const NOP_ALLOCATOR: NopAllocator = NopAllocator { };
 
 unsafe impl Allocator for NopAllocator {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize

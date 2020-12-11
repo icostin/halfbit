@@ -20,9 +20,8 @@ impl From<AllocError> for core::fmt::Error {
     }
 }
 
-
 pub unsafe trait Allocator {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
@@ -86,7 +85,7 @@ impl<'a> core::fmt::Debug for AllocatorRef<'a> {
 }
 
 unsafe impl<'a> Allocator for AllocatorRef<'a> {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
@@ -201,8 +200,12 @@ mod tests {
     #[should_panic(expected = "alloc not implemented")]
     fn default_alloc_panics() {
         let a = DefaultAllocator { };
-        let _r = a.alloc(NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::new(1).unwrap());
+        let _r = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::new(1).unwrap()
+            )
+        };
     }
 
     #[test]

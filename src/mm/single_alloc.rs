@@ -53,14 +53,13 @@ impl<'a> SingleAlloc<'a> {
 }
 
 unsafe impl<'a> Allocator for SingleAlloc<'a> {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
     ) -> Result<NonNull<u8>, AllocError> {
-        let state: &'a mut SingleAllocState<'a> = unsafe {
-            &mut *(self.state.get() as *mut SingleAllocState<'a>)
-        };
+        let state: &'a mut SingleAllocState<'a> =
+            &mut *(self.state.get() as *mut SingleAllocState<'a>);
         if state.used != 0 {
             Err(AllocError::OperationFailed)
         } else if ((state.buffer.as_ptr() as usize) & (align.get() - 1)) != 0 {
@@ -159,8 +158,9 @@ mod tests {
     fn alloc_smaller_than_buffer_size_works_on_new_instance() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let r = a.alloc(NonZeroUsize::new(6).unwrap(),
-                        Pow2Usize::new(1).unwrap());
+        let r = unsafe {
+            a.alloc(NonZeroUsize::new(6).unwrap(), Pow2Usize::new(1).unwrap())
+        };
         assert_eq!(r.unwrap(), NonNull::new(buf.as_mut_ptr()).unwrap());
     }
 
@@ -168,26 +168,28 @@ mod tests {
     fn alloc_buffer_size_works_on_new_instance() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let r = a.alloc(NonZeroUsize::new(7).unwrap(),
-                        Pow2Usize::new(1).unwrap());
+        let r = unsafe {
+            a.alloc(NonZeroUsize::new(7).unwrap(), Pow2Usize::new(1).unwrap())
+        };
         assert_eq!(r.unwrap(), NonNull::new(buf.as_mut_ptr()).unwrap());
     }
     #[test]
     fn alloc_with_unsuitable_alignment_fails() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let r = a.alloc(NonZeroUsize::new(8).unwrap(),
-                        Pow2Usize::max());
+        let r = unsafe {
+            a.alloc(NonZeroUsize::new(8).unwrap(), Pow2Usize::max())
+        };
         assert_eq!(r.unwrap_err(), AllocError::UnsupportedAlignment);
     }
-
 
     #[test]
     fn alloc_larger_than_buffer_size_fails() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let r = a.alloc(NonZeroUsize::new(8).unwrap(),
-                        Pow2Usize::new(1).unwrap());
+        let r = unsafe {
+            a.alloc(NonZeroUsize::new(8).unwrap(), Pow2Usize::new(1).unwrap())
+        };
         assert_eq!(r.unwrap_err(), AllocError::NotEnoughMemory);
     }
 
@@ -197,7 +199,7 @@ mod tests {
         let a = SingleAlloc::new(&mut buf);
         let size = NonZeroUsize::new(6).unwrap();
         let align = Pow2Usize::new(1).unwrap();
-        let ptr = a.alloc(size, align).unwrap();
+        let ptr = unsafe { a.alloc(size, align) }.unwrap();
         unsafe { a.free(ptr, size, align) };
     }
 
@@ -219,7 +221,7 @@ mod tests {
         let a = SingleAlloc::new(&mut buf);
         let size = NonZeroUsize::new(6).unwrap();
         let align = Pow2Usize::new(1).unwrap();
-        let _ptr = a.alloc(size, align).unwrap();
+        let _ptr = unsafe { a.alloc(size, align) }.unwrap();
         unsafe { a.free(NonNull::dangling(), size, align) };
     }
 
@@ -231,7 +233,7 @@ mod tests {
         let size = NonZeroUsize::new(6).unwrap();
         let mismatched_size = NonZeroUsize::new(5).unwrap();
         let align = Pow2Usize::new(1).unwrap();
-        let ptr = a.alloc(size, align).unwrap();
+        let ptr = unsafe { a.alloc(size, align) }.unwrap();
         unsafe { a.free(ptr, mismatched_size, align) };
     }
 
@@ -239,8 +241,9 @@ mod tests {
     fn grow_smaller_than_buffer_size_works() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let p = a.alloc(NonZeroUsize::new(3).unwrap(),
-                        Pow2Usize::new(1).unwrap()).unwrap();
+        let p = unsafe {
+            a.alloc(NonZeroUsize::new(3).unwrap(), Pow2Usize::new(1).unwrap())
+        }.unwrap();
         let r = unsafe {
             a.grow(
                 p,
@@ -257,8 +260,9 @@ mod tests {
     fn grow_to_buffer_size_works() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let p = a.alloc(NonZeroUsize::new(3).unwrap(),
-                        Pow2Usize::new(1).unwrap()).unwrap();
+        let p = unsafe {
+            a.alloc(NonZeroUsize::new(3).unwrap(), Pow2Usize::new(1).unwrap())
+        }.unwrap();
         let r = unsafe {
             a.grow(
                 p,
@@ -275,8 +279,9 @@ mod tests {
     fn grow_to_larger_than_buffer_size_fails() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let p = a.alloc(NonZeroUsize::new(3).unwrap(),
-                        Pow2Usize::new(1).unwrap()).unwrap();
+        let p = unsafe {
+            a.alloc(NonZeroUsize::new(3).unwrap(), Pow2Usize::new(1).unwrap())
+        }.unwrap();
         let r = unsafe {
             a.grow(
                 p,
@@ -293,8 +298,9 @@ mod tests {
     fn shrink_from_buffer_size_works() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let p = a.alloc(NonZeroUsize::new(7).unwrap(),
-                        Pow2Usize::new(1).unwrap()).unwrap();
+        let p = unsafe {
+            a.alloc(NonZeroUsize::new(7).unwrap(), Pow2Usize::new(1).unwrap())
+        }.unwrap();
         let r = unsafe {
             a.shrink(
                 p,
@@ -318,8 +324,9 @@ mod tests {
     fn contains_on_allocated_pointer_returns_true() {
         let mut buf = [0u8; 7];
         let a = SingleAlloc::new(&mut buf);
-        let p = a.alloc(NonZeroUsize::new(3).unwrap(),
-                        Pow2Usize::new(1).unwrap()).unwrap();
+        let p = unsafe {
+            a.alloc(NonZeroUsize::new(3).unwrap(), Pow2Usize::new(1).unwrap())
+        }.unwrap();
         assert!(a.contains(p));
     }
 

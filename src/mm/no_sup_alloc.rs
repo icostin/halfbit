@@ -9,7 +9,7 @@ use super::AllocError;
 pub struct NoSupAllocator { }
 
 unsafe impl Allocator for NoSupAllocator {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
@@ -72,8 +72,11 @@ mod tests {
     #[test]
     fn no_sup_allocator_fails_to_alloc() {
         let a = no_sup_allocator();
-        let r = a.alloc(NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::new(1).unwrap());
+        let r = unsafe { 
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::new(1).unwrap()) 
+        };
         assert!(r.is_err());
         assert_eq!(r.unwrap_err(), AllocError::UnsupportedOperation);
     }

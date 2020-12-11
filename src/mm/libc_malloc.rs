@@ -16,7 +16,7 @@ impl Malloc {
 }
 
 unsafe impl Allocator for Malloc {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
@@ -93,25 +93,25 @@ mod tests {
     fn malloc_fails_for_ridiculously_large_size() {
         let a = Malloc::new();
         assert_eq!(
-            a.alloc(
+            unsafe { a.alloc(
                 NonZeroUsize::new(usize::MAX).unwrap(),
                 Pow2Usize::one()
-            ).unwrap_err(),
+            ) }.unwrap_err(),
             AllocError::NotEnoughMemory);
     }
 
     #[test]
     fn grow_works() {
         let a = Malloc::new();
-        let p1 = a.alloc(
+        let p1 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p1.as_ptr() = 0xAA_u8 };
-        let p2 = a.alloc(
+        let p2 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         let p3 = unsafe {
             a.grow(
                 p1,
