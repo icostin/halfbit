@@ -24,9 +24,9 @@ unsafe impl Allocator for Malloc {
         if align.get() > MALLOC_ALIGNMENT {
             Err(AllocError::UnsupportedAlignment)
         } else {
-            NonNull::new(unsafe {
+            NonNull::new(
                 libc::malloc(size.get() as libc::size_t) as *mut u8
-            }).ok_or(AllocError::NotEnoughMemory)
+            ).ok_or(AllocError::NotEnoughMemory)
         }
     }
     unsafe fn free(
