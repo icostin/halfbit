@@ -47,8 +47,7 @@ unsafe impl Allocator for Malloc {
         NonNull::new(
             libc::realloc(
                 ptr.as_ptr() as *mut libc::c_void,
-                new_larger_size.get() as libc::size_t
-            ) as *mut u8
+                new_larger_size.get() as libc::size_t) as *mut u8
         ).ok_or(AllocError::NotEnoughMemory)
     }
     unsafe fn shrink(
@@ -61,22 +60,17 @@ unsafe impl Allocator for Malloc {
         NonNull::new(
             libc::realloc(
                 ptr.as_ptr() as *mut libc::c_void,
-                new_smaller_size.get() as libc::size_t
-            ) as *mut u8
+                new_smaller_size.get() as libc::size_t) as *mut u8
         ).ok_or(AllocError::NotEnoughMemory)
     }
-    fn supports_contains(&self) -> bool {
-        false
-    }
+    fn supports_contains(&self) -> bool { false }
     fn contains(
         &self,
         _ptr: NonNull<u8>
     ) -> bool {
         panic!("contains not implemented!");
     }
-    fn name(&self) -> &'static str {
-        "libc-malloc"
-    }
+    fn name(&self) -> &'static str { "libc-malloc" }
 }
 
 #[cfg(test)]
@@ -134,5 +128,69 @@ mod tests {
         }
 
     }
+
+    #[test]
+    fn shrink_works() {
+        let a = Malloc::new();
+        let p1 = unsafe { a.alloc(
+            NonZeroUsize::new(7).unwrap(),
+            Pow2Usize::one()
+        ) }.unwrap();
+        unsafe { *p1.as_ptr() = 0xAA_u8 };
+        let p2 = unsafe { a.alloc(
+            NonZeroUsize::new(1).unwrap(),
+            Pow2Usize::one()
+        ) }.unwrap();
+        let p3 = unsafe {
+            a.shrink(
+                p1,
+                NonZeroUsize::new(7).unwrap(),
+                NonZeroUsize::new(3).unwrap(),
+                Pow2Usize::one())
+        }.unwrap();
+        assert_eq!(unsafe { *p3.as_ptr() }, 0xAA_u8);
+        unsafe {
+            a.free(
+                p2,
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            );
+            a.free(
+                p3,
+                NonZeroUsize::new(3).unwrap(),
+                Pow2Usize::one()
+            );
+        }
+    }
+
+    #[test]
+    fn large_alignment_not_supported_for_alloc() {
+        let a = Malloc::new();
+        let e1 = unsafe { a.alloc(
+            NonZeroUsize::new(1).unwrap(),
+            Pow2Usize::from_smaller_or_equal_usize(MALLOC_ALIGNMENT + 1).unwrap()
+        ) }.unwrap_err();
+        assert_eq!(e1, AllocError::UnsupportedAlignment);
+    }
+
+    #[test]
+    fn contains_not_supported() {
+        let a = Malloc::new();
+        assert!(!a.supports_contains());
+    }
+
+    #[test]
+    fn appropriate_name() {
+        let a = Malloc::new();
+        assert!(a.name().contains("libc"))
+    }
+
+    #[test]
+    #[should_panic]
+    fn contains_panics() {
+        let a = Malloc::new();
+        a.contains(NonNull::dangling());
+    }
+
 }
 
