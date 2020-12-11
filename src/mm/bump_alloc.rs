@@ -1,17 +1,13 @@
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-    usize_align_up,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
+use crate::num::usize_align_up;
 
-use super::{
-    NonNull,
-    AllocError,
-    Allocator,
-};
+use super::NonNull;
+use super::Allocator;
+use super::AllocError;
 
 struct BumpAllocatorState<'a> {
     begin_addr: usize,

@@ -1,14 +1,11 @@
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-};
+use core::ptr::NonNull;
 
-use super::{
-    NonNull,
-    Allocator,
-    AllocatorRef,
-    AllocError,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
+
+use super::Allocator;
+use super::AllocatorRef;
+use super::AllocError;
 
 #[derive(Debug)]
 pub struct Box<'a, T> {

@@ -1,9 +1,7 @@
-pub use core::ptr::NonNull;
+use core::ptr::NonNull;
 
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
 
 #[derive(PartialEq, Debug)]
 pub enum AllocError {

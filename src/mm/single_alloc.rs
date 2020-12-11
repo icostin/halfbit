@@ -1,15 +1,11 @@
+use core::ptr::NonNull;
 use core::cell::UnsafeCell;
 
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
 
-use super::{
-    NonNull,
-    AllocError,
-    Allocator,
-};
+use super::Allocator;
+use super::AllocError;
 
 pub struct SingleAllocState<'a> {
     buffer: &'a mut [u8],

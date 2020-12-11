@@ -1,13 +1,10 @@
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-};
+use core::ptr::NonNull;
 
-use super::{
-    NonNull,
-    AllocError,
-    Allocator,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
+
+use super::Allocator;
+use super::AllocError;
 
 pub struct NoSupAllocator { }
 
