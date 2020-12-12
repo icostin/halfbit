@@ -14,6 +14,11 @@ impl<'a> String<'a> {
             data: Vector::new(allocator)
         }
     }
+    pub fn map_str(s: &'a str) -> String<'a> {
+        String {
+            data: Vector::map_slice(s.as_bytes())
+        }
+    }
     pub fn as_str(&self) -> &str {
         unsafe { core::str::from_utf8_unchecked(self.data.as_slice()) }
     }
@@ -38,6 +43,12 @@ mod tests {
         let mut s = String::new(a.to_ref());
         write!(s, "This is {:?}: {} = 0x{:04X}!", "so easy", 1234, 1234).unwrap();
         assert_eq!(s.as_str(), "This is \"so easy\": 1234 = 0x04D2!");
+    }
+
+    #[test]
+    fn map_str() {
+        let b = String::map_str("abc");
+        assert_eq!(b.as_str(), "abc");
     }
 }
 
