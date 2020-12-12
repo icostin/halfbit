@@ -61,17 +61,14 @@ impl<'a, T> Vector<'a, T> {
             return Err(AllocError::UnsupportedSize);
         }
         let len_needed = self.len + count;
-        if len_needed <= self.len {
+        if len_needed <= self.cap {
             return Ok(());
         }
-        let mut cap_to_try =
-            Pow2Usize::from_smaller_or_equal_usize(len_needed)
-            .map(|x| core::cmp::min(x.get(), max_cap))
-            .unwrap_or(len_needed);
+        let mut cap_to_try = Pow2Usize::from_smaller_or_equal_usize(len_needed)
+            .map(|x| core::cmp::min(x.get(), max_cap)).unwrap_or(len_needed);
         let item_align = core::mem::align_of::<T>();
         loop {
-            match unsafe {
-                self.allocator.alloc_or_grow(
+            match unsafe { self.allocator.alloc_or_grow(
                     self.ptr.cast::<u8>(),
                     self.cap * item_size,
                     NonZeroUsize::new(cap_to_try * item_size).unwrap(),
@@ -150,8 +147,7 @@ impl<'a, T> Drop for Vector<'a, T> {
             unsafe {
                 self.allocator.free(
                     self.ptr.cast::<u8>(),
-                    NonZeroUsize::new(core::mem::size_of::<T>() * self.cap)
-                        .unwrap(),
+                    NonZeroUsize::new(core::mem::size_of::<T>() * self.cap).unwrap(),
                     Pow2Usize::new(core::mem::align_of::<T>()).unwrap()
                 );
             }
@@ -227,6 +223,52 @@ mod tests {
     }
 
     #[test]
+    fn reserve_with_count_that_overflows_usize() {
+        let mut buffer = [0u8; 4];
+        let a = SingleAlloc::new(&mut buffer);
+        let ar = a.to_ref();
+        let mut v = ar.vector::<u16>();
+        v.push(0x1234_u16).unwrap();
+        assert_eq!(v.reserve(usize::MAX).unwrap_err(), AllocError::UnsupportedSize);
+    }
+
+    struct PretendAlloc<'a>(&'a mut [u8]);
+    unsafe impl Allocator for PretendAlloc<'_> {
+        unsafe fn alloc(
+            &self,
+            _size: NonZeroUsize,
+            _align: Pow2Usize
+        ) -> Result<NonNull<u8>, AllocError> {
+            Ok(NonNull::new(self.0.as_ptr() as *mut u8).unwrap())
+        }
+        unsafe fn free(
+            &self,
+            _ptr: NonNull<u8>,
+            _current_size: NonZeroUsize,
+            _align: Pow2Usize) {
+        }
+        unsafe fn grow(
+            &self,
+            ptr: NonNull<u8>,
+            _current_size: NonZeroUsize,
+            _new_larger_size: NonZeroUsize,
+            _align: Pow2Usize
+        ) -> Result<NonNull<u8>, AllocError> {
+            Ok(ptr)
+        }
+    }
+    #[test]
+    fn reserve_with_large_count_that_prevents_power_of_2_rounding_of_cap() {
+        let mut buffer = [0u8; 4];
+        let a = PretendAlloc(&mut buffer);
+        let ar = a.to_ref();
+        let mut v = ar.vector::<u8>();
+        v.push(0xA1_u8).unwrap();
+        v.reserve(usize::MAX / 2 + 1).unwrap();
+        assert_eq!(v.cap(), usize::MAX / 2 + 2);
+    }
+
+    #[test]
     fn get_slice_from_vector() {
         let mut buffer = [0u8; 4];
         let a = SingleAlloc::new(&mut buffer);
@@ -240,7 +282,6 @@ mod tests {
         assert_eq!(s.len(), 2);
         assert_eq!(s[0], 0x1234);
         assert_eq!(s[1], 0x5678);
-
     }
 
     #[test]
@@ -250,12 +291,14 @@ mod tests {
             let v = Vector::map_slice(&x);
             //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
             assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 6_u16, 8_u16 ]);
+            assert_eq!(v.cap(), 0);
         }
         x[2] = 66;
         {
             let v = Vector::map_slice(&x);
             //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
             assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 66_u16, 8_u16 ]);
+            assert_eq!(v.cap(), 0);
         }
     }
 
@@ -264,6 +307,15 @@ mod tests {
         let x: [u16; 4] = [ 2, 4, 6, 8 ];
         let mut v = Vector::map_slice(&x);
         assert_eq!(v.as_mut_slice().len(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "zero sized")]
+    fn panic_creating_vector_with_zero_sized_items() {
+        let mut buffer = [0u8; 4];
+        let a = SingleAlloc::new(&mut buffer);
+        let ar = a.to_ref();
+        let _v = ar.vector::<()>();
     }
 }
 
