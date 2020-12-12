@@ -17,10 +17,7 @@ pub struct Error<'a> {
 
 impl<'a> Error<'a> {
     pub fn new(code: ErrorCode, msg: String<'a>) -> Error<'a> {
-        Error {
-            code,
-            msg,
-        }
+        Error { code, msg }
     }
 }
 
