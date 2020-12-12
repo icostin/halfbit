@@ -340,7 +340,7 @@ mod tests {
     fn cannot_allocate_two_items() {
         let mut buf = [0u8; 7];
         let a = single_alloc(&mut buf);
-        let p = unsafe { a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap();
+        let _p = unsafe { a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap();
         assert_eq!(unsafe { a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), AllocError::OperationFailed);
     }
 
