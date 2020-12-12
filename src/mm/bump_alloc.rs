@@ -1,17 +1,13 @@
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-    usize_align_up,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
+use crate::num::usize_align_up;
 
-use super::{
-    NonNull,
-    AllocError,
-    Allocator,
-};
+use super::NonNull;
+use super::Allocator;
+use super::AllocError;
 
 struct BumpAllocatorState<'a> {
     begin_addr: usize,
@@ -50,14 +46,13 @@ impl<'a> BumpAllocator<'a> {
 }
 
 unsafe impl<'a> Allocator for BumpAllocator<'a> {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
     ) -> Result<NonNull<u8>, AllocError> {
-        let state: &'a mut BumpAllocatorState<'a> = unsafe {
-            &mut *(self.state.get() as *mut BumpAllocatorState<'a>)
-        };
+        let state: &'a mut BumpAllocatorState<'a> = &mut
+            *(self.state.get() as *mut BumpAllocatorState<'a>);
         usize_align_up(state.current_addr, align)
             .map_or(None, |v| v.checked_add(size.get()))
             .map_or(None, |v| if v <= state.end_addr {
@@ -74,9 +69,8 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
         _align: Pow2Usize
     ) {
         if self.is_last_allocation(ptr, current_size) {
-            let state: &'a mut BumpAllocatorState<'a> = {
-                &mut *(self.state.get() as *mut BumpAllocatorState<'a>)
-            };
+            let state: &'a mut BumpAllocatorState<'a> = &mut
+                *(self.state.get() as *mut BumpAllocatorState<'a>);
             state.current_addr -= current_size.get();
         }
     }
@@ -89,9 +83,8 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
     ) -> Result<NonNull<u8>, AllocError> {
         if self.is_last_allocation(ptr, current_size) &&
             align.is_non_null_ptr_aligned(ptr) {
-            let state: &'a mut BumpAllocatorState<'a> = {
-                &mut *(self.state.get() as *mut BumpAllocatorState<'a>)
-            };
+            let state: &'a mut BumpAllocatorState<'a> = &mut 
+                *(self.state.get() as *mut BumpAllocatorState<'a>);
             let extra_size = new_larger_size.get() - current_size.get();
             if extra_size <= state.end_addr - state.current_addr {
                 state.current_addr += extra_size;
@@ -116,30 +109,22 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
             Err(AllocError::UnsupportedAlignment)
         } else {
             if self.is_last_allocation(ptr, current_size) {
-                let state: &'a mut BumpAllocatorState<'a> = {
-                    &mut *(self.state.get() as *mut BumpAllocatorState<'a>)
-                };
+                let state: &'a mut BumpAllocatorState<'a> = &mut
+                    *(self.state.get() as *mut BumpAllocatorState<'a>);
                 state.current_addr -= current_size.get() - new_smaller_size.get();
             }
             Ok(ptr)
         }
     }
-    fn supports_contains(&self) -> bool {
-        true
-    }
-    fn contains(
-        &self,
-        ptr: NonNull<u8>
-    ) -> bool {
+    fn supports_contains(&self) -> bool { true }
+    fn contains(&self, ptr: NonNull<u8>) -> bool {
         let state: &'a BumpAllocatorState<'a> = unsafe {
             &*(self.state.get() as *mut BumpAllocatorState<'a>)
         };
         let addr = ptr.as_ptr() as usize;
         state.begin_addr <= addr && addr < state.end_addr
     }
-    fn name(&self) -> &'static str {
-        "bump-allocator"
-    }
+    fn name(&self) -> &'static str { "bump-allocator" }
 }
 
 #[cfg(test)]
@@ -159,8 +144,9 @@ mod tests {
         let mut buffer = [0_u8; 1];
         let a = BumpAllocator::new(&mut buffer);
         assert_eq!(
-            a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one())
-                .unwrap().as_ptr(),
+            unsafe {
+                a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one())
+            }.unwrap().as_ptr(),
             buffer.as_mut_ptr());
     }
 
@@ -169,8 +155,9 @@ mod tests {
         let mut buffer = [0_u8; 1];
         let a = BumpAllocator::new(&mut buffer);
         assert_eq!(
-            a.alloc(NonZeroUsize::new(2).unwrap(), Pow2Usize::one())
-                .unwrap_err(),
+            unsafe {
+                a.alloc(NonZeroUsize::new(2).unwrap(), Pow2Usize::one())
+            }.unwrap_err(),
             AllocError::NotEnoughMemory);
     }
 
@@ -197,10 +184,12 @@ mod tests {
     fn grow_last_allocation_succeeds() {
         let mut buffer = [0xAA_u8; 2];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x99_u8 };
         let p2 = unsafe {
             a.grow(
@@ -217,10 +206,12 @@ mod tests {
     fn grow_last_allocation_fails() {
         let mut buffer = [0xAA_u8; 2];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x99_u8 };
         let e2 = unsafe {
             a.grow(p1,
@@ -235,15 +226,19 @@ mod tests {
     fn grow_by_doing_a_new_allocation_succeeds() {
         let mut buffer = [0xAA_u8; 4];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x5A_u8 };
-        let p2 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p2 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p2.as_ptr() = 0xA5_u8 };
         let p3 = unsafe {
             a.grow(
@@ -261,15 +256,17 @@ mod tests {
     fn fail_to_grow_by_reallocation() {
         let mut buffer = [0xAA_u8; 4];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
-            NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::one()
-        ).unwrap();
+        let p1 = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::one()
+            )
+        }.unwrap();
         unsafe { *p1.as_ptr() = 0x5A_u8 };
-        let p2 = a.alloc(
+        let p2 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p2.as_ptr() = 0xA5_u8 };
         let e3 = unsafe {
             a.grow(
@@ -287,10 +284,10 @@ mod tests {
     fn shrink_last_allocation_reclaims_memory() {
         let mut buffer = [0xAA_u8; 2];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
+        let p1 = unsafe { a.alloc(
             NonZeroUsize::new(2).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p1.as_ptr() = 0x12_u8 };
         let p2 = unsafe {
             a.shrink(
@@ -300,10 +297,10 @@ mod tests {
                 Pow2Usize::one())
         }.unwrap();
         assert_eq!(unsafe { *p2.as_ptr() }, 0x12_u8);
-        let p3 = a.alloc(
+        let p3 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         assert_eq!(p3.as_ptr(), unsafe { p2.as_ptr().offset(1) });
     }
 
@@ -311,16 +308,16 @@ mod tests {
     fn shrink_non_last_allocation() {
         let mut buffer = [0xAA_u8; 4];
         let a = BumpAllocator::new(&mut buffer);
-        let p1 = a.alloc(
+        let p1 = unsafe { a.alloc(
             NonZeroUsize::new(2).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p1.as_ptr() = 0x5A_u8 };
         unsafe { *p1.as_ptr().offset(1) = 0xA5_u8 };
-        let p2 = a.alloc(
+        let p2 = unsafe { a.alloc(
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::one()
-        ).unwrap();
+        ) }.unwrap();
         unsafe { *p2.as_ptr() = 0xBB_u8 };
         let p3 = unsafe {
             a.shrink(
@@ -332,4 +329,43 @@ mod tests {
         assert_eq!(unsafe { *p3.as_ptr() }, 0x5A_u8);
         assert_eq!(unsafe { *p2.as_ptr() }, 0xBB_u8);
     }
+
+    #[test]
+    fn shrink_with_higher_alignment_fails() {
+        let mut buffer = [0xAA_u8; 4];
+        let a = BumpAllocator::new(&mut buffer);
+        let p1 = unsafe { a.alloc(
+            NonZeroUsize::new(2).unwrap(),
+            Pow2Usize::one()
+        ) }.unwrap();
+        let e2 = unsafe { 
+            a.shrink(
+                p1,
+                NonZeroUsize::new(2).unwrap(),
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::max()
+            )
+        }.unwrap_err();
+        assert_eq!(e2, AllocError::UnsupportedAlignment);
+    }
+
+    #[test]
+    fn contains_is_supported() {
+        let mut buffer = [0xAA_u8; 4];
+        let a = BumpAllocator::new(&mut buffer);
+        assert!(a.supports_contains());
+    }
+
+    #[test]
+    fn contains_true_only_for_pointers_inside_buffer() {
+        let mut buffer = [0xAA_u8; 47];
+        let b = buffer.as_mut_ptr();
+        let n = buffer.len();
+        let a = BumpAllocator::new(&mut buffer);
+        assert!(a.contains(NonNull::new(b).unwrap()));
+        assert!(a.contains(NonNull::new(unsafe { b.offset(n as isize - 1) }).unwrap()));
+        assert!(!a.contains(NonNull::new(unsafe { b.offset(n as isize) }).unwrap()));
+        assert!(!a.contains(NonNull::new(unsafe { b.offset(-1) }).unwrap()));
+    }
+
 }

@@ -1,14 +1,11 @@
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-};
+use core::ptr::NonNull;
 
-use super::{
-    NonNull,
-    Allocator,
-    AllocatorRef,
-    AllocError,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
+
+use super::Allocator;
+use super::AllocatorRef;
+use super::AllocError;
 
 #[derive(Debug)]
 pub struct Box<'a, T> {
@@ -28,7 +25,7 @@ impl<'a, T> Box<'a, T> {
 
         let size = NonZeroUsize::new(size).unwrap();
         let align = Pow2Usize::new(core::mem::align_of::<T>()).unwrap();
-        match allocator.alloc(size, align) {
+        match unsafe { allocator.alloc(size, align) } {
             Ok(ptr) => {
                 let ptr = ptr.cast::<T>();
                 unsafe { core::ptr::write(ptr.as_ptr(), value) };

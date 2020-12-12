@@ -1,9 +1,7 @@
-pub use core::ptr::NonNull;
+use core::ptr::NonNull;
 
-use crate::num::{
-    NonZeroUsize,
-    Pow2Usize,
-};
+use crate::num::NonZeroUsize;
+use crate::num::Pow2Usize;
 
 #[derive(PartialEq, Debug)]
 pub enum AllocError {
@@ -22,9 +20,8 @@ impl From<AllocError> for core::fmt::Error {
     }
 }
 
-
 pub unsafe trait Allocator {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
@@ -57,18 +54,14 @@ pub unsafe trait Allocator {
     ) -> Result<NonNull<u8>, AllocError> {
         panic!("shrink not implemented");
     }
-    fn supports_contains(&self) -> bool {
-        false
-    }
+    fn supports_contains(&self) -> bool { false }
     fn contains(
         &self,
         _ptr: NonNull<u8>
     ) -> bool {
         panic!("contains not implemented!");
     }
-    fn name(&self) -> &'static str {
-        "some-allocator"
-    }
+    fn name(&self) -> &'static str { "some-allocator" }
     fn to_ref(&self) -> AllocatorRef
     where Self: Sized {
         AllocatorRef { allocator: self as &dyn Allocator }
@@ -88,7 +81,7 @@ impl<'a> core::fmt::Debug for AllocatorRef<'a> {
 }
 
 unsafe impl<'a> Allocator for AllocatorRef<'a> {
-    fn alloc(
+    unsafe fn alloc(
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
@@ -183,11 +176,7 @@ impl<'a> AllocatorRef<'a> {
         if current_size == 0 {
             self.alloc(new_larger_size, align)
         } else {
-            self.grow(
-                ptr,
-                NonZeroUsize::new(current_size).unwrap(),
-                new_larger_size,
-                align)
+            self.grow(ptr, NonZeroUsize::new(current_size).unwrap(), new_larger_size, align)
         }
     }
 }
@@ -203,8 +192,12 @@ mod tests {
     #[should_panic(expected = "alloc not implemented")]
     fn default_alloc_panics() {
         let a = DefaultAllocator { };
-        let _r = a.alloc(NonZeroUsize::new(1).unwrap(),
-            Pow2Usize::new(1).unwrap());
+        let _r = unsafe {
+            a.alloc(
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::new(1).unwrap()
+            )
+        };
     }
 
     #[test]
@@ -224,28 +217,28 @@ mod tests {
     #[should_panic(expected = "grow not implemented")]
     fn default_grow_panics() {
         let a = DefaultAllocator { };
-        unsafe {
+        match unsafe {
             a.grow(
                 NonNull::dangling(),
                 NonZeroUsize::new(1).unwrap(),
                 NonZeroUsize::new(2).unwrap(),
                 Pow2Usize::new(1).unwrap()
             )
-        }.unwrap_or(NonNull::dangling());
+        } { _ => {} };
     }
 
     #[test]
     #[should_panic(expected = "shrink not implemented")]
     fn default_shrink_panics() {
         let a = DefaultAllocator { };
-        unsafe {
+        match unsafe {
             a.shrink(
                 NonNull::dangling(),
                 NonZeroUsize::new(1).unwrap(),
                 NonZeroUsize::new(2).unwrap(),
                 Pow2Usize::new(1).unwrap()
             )
-        }.unwrap_or(NonNull::dangling());
+        } { _ => {} };
     }
 
     #[test]
@@ -272,6 +265,109 @@ mod tests {
         let a = DefaultAllocator { };
         let ar = a.to_ref();
         assert!(ar.name().contains("allocator"));
+    }
+
+    #[test]
+    fn fmt_error_from_alloc_error() {
+        let _fe: core::fmt::Error = AllocError::OperationFailed.into();
+    }
+
+    extern crate std;
+    use std::string::String as StdString;
+    use core::fmt::Write;
+
+    #[test]
+    fn fmt_on_default_allocator() {
+        let a = DefaultAllocator { };
+        let mut s = StdString::new();
+        write!(s, "{:?}", a.to_ref()).unwrap();
+        assert!(s.as_str().contains("allocator@"));
+    }
+
+    struct ShrinkTestAllocator { }
+    unsafe impl Allocator for ShrinkTestAllocator {
+        unsafe fn shrink(
+            &self,
+            _ptr: NonNull<u8>,
+            _current_size: NonZeroUsize,
+            _new_smaller_size: NonZeroUsize,
+            _align: Pow2Usize
+        ) -> Result<NonNull<u8>, AllocError> {
+            Ok(NonNull::new(0xA1B2C3D4_usize as *mut u8).unwrap())
+        }
+    }
+    #[test]
+    fn allocator_ref_shrink_calls_allocator_shrink() {
+        let a = ShrinkTestAllocator { };
+        let ar = a.to_ref();
+        let p = unsafe {
+            ar.shrink(
+                NonNull::dangling(),
+                NonZeroUsize::new(2).unwrap(),
+                NonZeroUsize::new(1).unwrap(),
+                Pow2Usize::new(1).unwrap()
+            )
+        }.unwrap();
+        assert_eq!(p.as_ptr(), 0xA1B2C3D4_usize as *mut u8);
+    }
+
+    struct ContainsSupTestAllocator { }
+    unsafe impl Allocator for ContainsSupTestAllocator {
+        fn supports_contains(&self) -> bool { true }
+        fn contains(&self, ptr: NonNull<u8>) -> bool {
+            (ptr.as_ptr() as usize) & 1 == 1
+        }
+    }
+    #[test]
+    fn contains_on_allocator_ref_forwards_to_allocator() {
+        let a = ContainsSupTestAllocator { };
+        let ar = a.to_ref();
+        assert!(ar.supports_contains());
+        assert!(ar.contains(NonNull::new(1 as *mut u8).unwrap()));
+        assert!(!ar.contains(NonNull::new(2 as *mut u8).unwrap()));
+    }
+
+    #[test]
+    fn allocator_ref_to_ref_copies_internal_ref() {
+        let a = DefaultAllocator { };
+        let ar = a.to_ref();
+        let arr = ar.to_ref();
+        let size = core::mem::size_of::<AllocatorRef<'_>>();
+        assert_eq!(
+            unsafe { core::slice::from_raw_parts(&ar as *const AllocatorRef as *const u8, size) },
+            unsafe { core::slice::from_raw_parts(&arr as *const AllocatorRef as *const u8, size) });
+    }
+
+    struct AllocOrGrowTestAllocator();
+    unsafe impl Allocator for AllocOrGrowTestAllocator {
+        unsafe fn alloc(
+            &self,
+            size: NonZeroUsize,
+            _align: Pow2Usize
+        ) -> Result<NonNull<u8>, AllocError> {
+            Ok(NonNull::new((size.get() * 1000 + size.get()) as *mut u8).unwrap())
+        }
+        unsafe fn grow(
+            &self,
+            ptr: NonNull<u8>,
+            current_size: NonZeroUsize,
+            new_larger_size: NonZeroUsize,
+            _align: Pow2Usize
+        ) -> Result<NonNull<u8>, AllocError> {
+            Ok(NonNull::new(((ptr.as_ptr() as usize) - current_size.get() + new_larger_size.get()) as *mut u8).unwrap())
+        }
+    }
+    #[test]
+    fn alloc_or_grow_first_allocates_then_grows() {
+        let a = AllocOrGrowTestAllocator();
+        let ar = a.to_ref();
+        let mut p = NonNull::<u8>::dangling();
+        p = unsafe { ar.alloc_or_grow(p, 0, NonZeroUsize::new(123).unwrap(), Pow2Usize::one()).unwrap() };
+        assert_eq!(p.as_ptr() as usize, 123123);
+        p = unsafe { ar.alloc_or_grow(p, 123, NonZeroUsize::new(456).unwrap(), Pow2Usize::one()).unwrap() };
+        assert_eq!(p.as_ptr() as usize, 123456);
+        p = unsafe { ar.alloc_or_grow(p, 456, NonZeroUsize::new(789).unwrap(), Pow2Usize::one()).unwrap() };
+        assert_eq!(p.as_ptr() as usize, 123789);
     }
 }
 
