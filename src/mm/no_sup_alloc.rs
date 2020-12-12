@@ -41,18 +41,9 @@ unsafe impl Allocator for NoSupAllocator {
     ) -> Result<NonNull<u8>, AllocError> {
         panic!("cannot shrink what hasn't been allocated!");
     }
-    fn supports_contains(&self) -> bool {
-        true
-    }
-    fn contains(
-        &self,
-        _ptr: NonNull<u8>
-    ) -> bool {
-        false
-    }
-    fn name(&self) -> &'static str {
-        "no-sup-allocator"
-    }
+    fn supports_contains(&self) -> bool { true }
+    fn contains(&self, _ptr: NonNull<u8>) -> bool { false }
+    fn name(&self) -> &'static str { "no-sup-allocator" }
 }
 
 pub fn no_sup_allocator() -> NoSupAllocator {
@@ -98,28 +89,28 @@ mod tests {
     #[should_panic(expected = "what hasn't been allocated")]
     fn no_sup_allocator_panics_on_grow() {
         let a = no_sup_allocator();
-        unsafe {
+        match unsafe {
             a.grow(
                 NonNull::dangling(),
                 NonZeroUsize::new(1).unwrap(),
                 NonZeroUsize::new(2).unwrap(),
                 Pow2Usize::new(1).unwrap()
             )
-        }.unwrap_or(NonNull::dangling());
+        } { _ => {} }
     }
 
     #[test]
     #[should_panic(expected = "what hasn't been allocated")]
     fn no_sup_allocator_panics_on_shrink() {
         let a = no_sup_allocator();
-        unsafe {
+        match unsafe {
             a.shrink(
                 NonNull::dangling(),
                 NonZeroUsize::new(2).unwrap(),
                 NonZeroUsize::new(1).unwrap(),
                 Pow2Usize::new(1).unwrap()
             )
-        }.unwrap_or(NonNull::dangling());
+        } { _ => {} }
     }
 
     #[test]
