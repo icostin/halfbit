@@ -1,8 +1,10 @@
 #![no_std]
 
-pub mod num;
+pub mod num; // numeric types/operations
 pub mod mm; // memory manager
+pub mod error; // error types
 pub mod io; // input/output
+pub mod exectx; // execution context
 
 pub fn lib_name() -> &'static str {
     "halfbit"

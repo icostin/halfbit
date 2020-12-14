@@ -8,6 +8,7 @@ pub struct String<'a> {
     data: Vector<'a, u8>,
 }
 
+
 impl<'a> String<'a> {
     pub fn new(allocator: AllocatorRef<'a>) -> String<'a> {
         String {
@@ -31,6 +32,15 @@ impl FmtWrite for String<'_> {
     }
 }
 
+impl<'a> core::fmt::Debug for String<'a> {
+    fn fmt(
+        &self,
+        fmt: &mut core::fmt::Formatter<'_>
+    ) -> core::result::Result<(), core::fmt::Error> {
+        core::fmt::Debug::fmt(self.as_str(), fmt)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,6 +59,17 @@ mod tests {
     fn map_str() {
         let b = String::map_str("abc");
         assert_eq!(b.as_str(), "abc");
+    }
+
+    #[test]
+    fn debug_fmt_uses_str() {
+        let mut buffer = [0; 256];
+        let a = BumpAllocator::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+
+        let b = String::map_str("abc /\\ \"def\"");
+        write!(s, "-{:?}-", b);
+        assert_eq!(s.as_str(), "-\"abc /\\\\ \\\"def\\\"\"-");
     }
 }
 
