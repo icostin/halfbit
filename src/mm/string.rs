@@ -68,7 +68,7 @@ mod tests {
         let mut s = String::new(a.to_ref());
 
         let b = String::map_str("abc /\\ \"def\"");
-        write!(s, "-{:?}-", b);
+        write!(s, "-{:?}-", b).unwrap();
         assert_eq!(s.as_str(), "-\"abc /\\\\ \\\"def\\\"\"-");
     }
 }
