@@ -79,7 +79,6 @@ mod tests {
     use crate::mm::Allocator;
     use crate::mm::NOP_ALLOCATOR;
     use crate::io::ErrorCode;
-    use crate::io::IOError;
 
     struct DefaultStream { }
     impl Stream for DefaultStream { }
@@ -152,7 +151,7 @@ mod tests {
         let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
 
         let mut n = Null::new();
-        let mut buf = [0_u8; 7];
+        let buf = [0_u8; 7];
         assert!(n.supports_write());
         assert_eq!(n.write(&buf, &mut xc).unwrap(), buf.len());
     }
