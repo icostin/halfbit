@@ -2,6 +2,7 @@ use super::IOResult;
 use super::IOError;
 use super::ErrorCode;
 use crate::exectx::ExecutionContext;
+use core::cell::UnsafeCell;
 
 pub enum SeekFrom {
     Start(u64),
@@ -51,6 +52,22 @@ impl Null {
         Null { }
     }
 }
+
+pub struct NullWrapper {
+    n: UnsafeCell<Null>
+}
+
+impl NullWrapper {
+    pub fn get(&self) -> &mut Null {
+        unsafe { &mut *(self.n.get() as *mut Null) }
+    }
+}
+unsafe impl Sync for NullWrapper { }
+
+
+pub static NULL_STREAM: NullWrapper = NullWrapper {
+    n: UnsafeCell::new(Null{})
+};
 
 impl Stream for Null {
     fn read<'a>(
@@ -160,5 +177,17 @@ mod tests {
     fn null_provider_name() {
         let n = Null::new();
         assert!(n.provider_name().contains("null"));
+    }
+
+    #[test]
+    fn null_wrapper_works() {
+        let mut xc = ExecutionContext::nop();
+        let buf = [0_u8; 5];
+        let n = NULL_STREAM.get();
+        {
+            let nn = NULL_STREAM.get();
+            assert_eq!(nn.write(&buf, &mut xc).unwrap(), buf.len());
+        }
+        assert_eq!(n.write(&buf, &mut xc).unwrap(), buf.len());
     }
 }

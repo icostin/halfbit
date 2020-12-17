@@ -2,7 +2,10 @@
 use crate::mm::AllocatorRef;
 use crate::mm::Box;
 use crate::mm::AllocError;
+use crate::mm::Allocator;
+use crate::mm::NOP_ALLOCATOR;
 use crate::io::stream::Stream;
+use crate::io::stream::NULL_STREAM;
 
 /* ExecutionContext *********************************************************/
 pub struct ExecutionContext<'a> {
@@ -20,6 +23,14 @@ impl<'a> ExecutionContext<'a> {
         log_stream: &'a mut (dyn Stream + 'a),
     ) -> ExecutionContext<'a> {
         ExecutionContext { main_allocator, error_allocator, log_stream }
+    }
+
+    pub fn nop() -> ExecutionContext<'a> {
+        ExecutionContext {
+            main_allocator: NOP_ALLOCATOR.to_ref(),
+            error_allocator: NOP_ALLOCATOR.to_ref(),
+            log_stream: NULL_STREAM.get()
+        }
     }
 
     pub fn get_main_allocator(&self) -> AllocatorRef<'_> {
