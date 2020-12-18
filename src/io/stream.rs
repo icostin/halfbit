@@ -1,8 +1,10 @@
+use core::fmt::Write as FmtWrite;
+use core::fmt::Result as FmtResult;
+use core::cell::UnsafeCell;
 use super::IOResult;
 use super::IOError;
 use super::ErrorCode;
 use crate::exectx::ExecutionContext;
-use core::cell::UnsafeCell;
 
 pub enum SeekFrom {
     Start(u64),
@@ -45,6 +47,14 @@ pub trait Stream {
     fn provider_name(&self) -> &'static str { "stream" }
 }
 
+impl FmtWrite for dyn Stream {
+    fn write_str(&mut self, s: &str) -> FmtResult {
+        let mut xc = ExecutionContext::nop();
+        self.write(s.as_bytes(), &mut xc)?;
+        Ok(())
+    }
+}
+
 pub struct Null { }
 
 impl Null {
@@ -70,6 +80,8 @@ pub static NULL_STREAM: NullWrapper = NullWrapper {
 };
 
 impl Stream for Null {
+    fn provider_name(&self) -> &'static str { "null-stream" }
+    fn supports_read(&self) -> bool { true }
     fn read<'a>(
         &mut self,
         _buf: &mut [u8],
@@ -77,6 +89,7 @@ impl Stream for Null {
     ) -> IOResult<usize> {
         Ok(0)
     }
+    fn supports_write(&self) -> bool { true }
     fn write<'a>(
         &mut self,
         buf: &[u8],
@@ -84,9 +97,24 @@ impl Stream for Null {
     ) -> IOResult<usize> {
         Ok(buf.len())
     }
+}
+
+pub struct Zero { }
+impl Zero {
+    pub fn new() -> Zero { Zero { } }
+}
+impl Stream for Zero {
     fn supports_read(&self) -> bool { true }
-    fn supports_write(&self) -> bool { true }
-    fn provider_name(&self) -> &'static str { "null-stream" }
+    fn read<'a>(
+        &mut self,
+        buf: &mut [u8],
+        _exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOResult<usize> {
+        for v in buf.iter_mut() {
+            *v = 0;
+        }
+        Ok(buf.len())
+    }
 }
 
 #[cfg(test)]
@@ -189,5 +217,31 @@ mod tests {
             assert_eq!(nn.write(&buf, &mut xc).unwrap(), buf.len());
         }
         assert_eq!(n.write(&buf, &mut xc).unwrap(), buf.len());
+    }
+
+    #[test]
+    fn fmt_into_null_stream() {
+        let mut n = Null::new();
+        let nn: &mut dyn Stream = &mut n;
+        write!(nn, "This is {:?}: {} = 0x{:04X}!", "so easy", 1234, 1234).unwrap();
+    }
+
+    #[test]
+    fn zero_read_returns_zeroes() {
+        let mut f = Zero::new();
+        let mut buf = [1_u8; 5];
+        let mut xc = ExecutionContext::nop();
+        assert!(f.supports_read());
+        assert_eq!(f.read(&mut buf, &mut xc).unwrap(), buf.len());
+    }
+
+    #[test]
+    fn zero_write_not_supported() {
+        let mut f = Zero::new();
+        let buf = [1_u8; 5];
+        let mut xc = ExecutionContext::nop();
+        assert!(!f.supports_write());
+        let e = f.write(&buf, &mut xc).unwrap_err();
+        assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
     }
 }
