@@ -41,6 +41,13 @@ pub trait Stream {
     ) -> IOResult<()> {
         Err(IOError::with_str(ErrorCode::UnsupportedOperation, "truncate not supported"))
     }
+    fn write_str<'a>(
+        &mut self,
+        data: &str,
+        exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOResult<usize> {
+        self.write(data.as_bytes(), exe_ctx)
+    }
     fn supports_read(&self) -> bool { false }
     fn supports_write(&self) -> bool { false }
     fn supports_seek(&self) -> bool { false }
@@ -116,6 +123,10 @@ impl Stream for Zero {
         Ok(buf.len())
     }
 }
+
+pub mod buffer;
+//pub use buffer::BufferAsRWStream;
+pub use buffer::BufferAsROStream;
 
 #[cfg(test)]
 mod tests {
