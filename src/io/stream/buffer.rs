@@ -5,8 +5,33 @@ use crate::io::IOError;
 use crate::io::ErrorCode;
 use crate::ExecutionContext;
 
+pub struct BufferAsOnePassROStream<'b> {
+    buffer: &'b [u8],
+}
+
+impl<'b> BufferAsOnePassROStream<'b> {
+    pub fn new(buffer: &'b [u8]) -> BufferAsOnePassROStream<'b> {
+        BufferAsOnePassROStream { buffer }
+    }
+}
+impl<'b> Stream for BufferAsOnePassROStream<'b> {
+    fn supports_read(&self) -> bool { true }
+    fn read<'a>(
+        &mut self,
+        buf: &mut [u8],
+        _exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOResult<'a, usize> {
+        let n = core::cmp::min(buf.len(), self.buffer.len());
+        let (a, b) = self.buffer.split_at(n);
+        buf[0..n].copy_from_slice(a);
+        self.buffer = b;
+
+        Ok(n)
+    }
+}
+
 pub struct BufferAsROStream<'a> {
-    buffer: &'a[u8],
+    buffer: &'a [u8],
     position: u64,
 }
 
@@ -104,6 +129,41 @@ mod tests {
         let mut xc = ExecutionContext::nop();
         let e = relative_position(u64::MAX, 1, &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedPosition);
+    }
+
+    #[test]
+    fn buf_one_pass_ro_multiple_reads() {
+        let mut f = BufferAsOnePassROStream::new(b"Hello world!");
+        let mut buf = [0_u8; 7];
+        let mut xc = ExecutionContext::nop();
+        assert!(f.supports_read());
+        assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 7);
+        assert_eq!(buf, *b"Hello w");
+        assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 5);
+        assert_eq!(buf[0..5], *b"orld!");
+        assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 0);
+    }
+
+    #[test]
+    fn buf_one_pass_ro_no_seek() {
+        let mut f = BufferAsOnePassROStream::new(b"Hello world!");
+        let mut xc = ExecutionContext::nop();
+        assert!(!f.supports_seek());
+        assert!(f.seek(SeekFrom::Start(0), &mut xc).is_err());
+        assert!(f.seek(SeekFrom::Current(0), &mut xc).is_err());
+        assert!(f.seek(SeekFrom::End(0), &mut xc).is_err());
+    }
+
+    #[test]
+    fn buf_one_pass_ro_write_not_supported() {
+        let mut f = BufferAsOnePassROStream::new(b"0123456789");
+        let buf = [0_u8; 1];
+        let mut xc = ExecutionContext::nop();
+
+        assert!(!f.supports_write());
+        let e = f.write(&buf, &mut xc).unwrap_err();
+
+        assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
     }
 
     #[test]
