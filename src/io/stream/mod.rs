@@ -17,35 +17,35 @@ pub trait Stream {
         &mut self,
         _buf: &mut [u8],
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<usize> {
+    ) -> IOResult<'a, usize> {
         Err(IOError::with_str(ErrorCode::UnsupportedOperation, "read not supported"))
     }
     fn write<'a>(
         &mut self,
         _buf: &[u8],
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<usize> {
+    ) -> IOResult<'a, usize> {
         Err(IOError::with_str(ErrorCode::UnsupportedOperation, "write not supported"))
     }
     fn seek<'a>(
         &mut self,
         _target: SeekFrom,
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<u64> {
+    ) -> IOResult<'a, u64> {
         Err(IOError::with_str(ErrorCode::UnsupportedOperation, "seek not supported"))
     }
     fn truncate<'a>(
         &mut self,
         _size: u64,
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<()> {
+    ) -> IOResult<'a, ()> {
         Err(IOError::with_str(ErrorCode::UnsupportedOperation, "truncate not supported"))
     }
     fn write_str<'a>(
         &mut self,
         data: &str,
         exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<usize> {
+    ) -> IOResult<'a, usize> {
         self.write(data.as_bytes(), exe_ctx)
     }
     fn supports_read(&self) -> bool { false }
@@ -93,7 +93,7 @@ impl Stream for Null {
         &mut self,
         _buf: &mut [u8],
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<usize> {
+    ) -> IOResult<'a, usize> {
         Ok(0)
     }
     fn supports_write(&self) -> bool { true }
@@ -101,7 +101,7 @@ impl Stream for Null {
         &mut self,
         buf: &[u8],
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<usize> {
+    ) -> IOResult<'a, usize> {
         Ok(buf.len())
     }
 }
@@ -116,7 +116,7 @@ impl Stream for Zero {
         &mut self,
         buf: &mut [u8],
         _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<usize> {
+    ) -> IOResult<'a, usize> {
         for v in buf.iter_mut() {
             *v = 0;
         }
@@ -210,6 +210,16 @@ mod tests {
         let buf = [0_u8; 7];
         assert!(n.supports_write());
         assert_eq!(n.write(&buf, &mut xc).unwrap(), buf.len());
+    }
+
+    #[test]
+    fn null_write_str_consumes_all_buffer() {
+        let mut log = Null::new();
+        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
+
+        let mut n = Null::new();
+        assert!(n.supports_write());
+        assert_eq!(n.write_str("abc", &mut xc).unwrap(), 3);
     }
 
     #[test]
