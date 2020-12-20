@@ -8,6 +8,7 @@ pub enum ErrorCode {
     BadOsHandle,
     UnexpectedEnd,
     UnsupportedPosition, // seek to a negative offset or to some large position past end that is not supported by the stream handler
+    NoSpace,
 }
 
 pub type IOError<'a> = crate::error::Error<'a, ErrorCode>;

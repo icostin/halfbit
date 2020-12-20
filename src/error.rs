@@ -18,6 +18,9 @@ where T: Sized + Debug {
     }
     pub fn get_data(&self) -> &T { &self.data }
     pub fn get_msg(&self) -> &str { self.msg.as_str() }
+    pub fn to_parts(self) -> (T, String<'a>) {
+        (self.data, self.msg)
+    }
 }
 
 impl<'a, T> From<Error<'a, T>> for core::fmt::Error
