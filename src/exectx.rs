@@ -1,4 +1,3 @@
-//use crate::mm::Allocator;
 use crate::mm::AllocatorRef;
 use crate::mm::Box;
 use crate::mm::AllocError;
@@ -53,6 +52,22 @@ impl<'a> ExecutionContext<'a> {
     }
 }
 
+#[macro_export]
+macro_rules! make_err {
+    ( $xc:expr, $err_data:expr, $oom_msg:expr, $( $x:tt )+ ) => {
+        {
+            use core::fmt::Write;
+            use crate::mm::String;
+            use crate::error::Error;
+            let mut msg = String::new($xc.get_error_allocator());
+            if let Err(_) = write!(msg, $( $x )*) {
+                msg = String::map_str($oom_msg);
+            }
+            Error::new($err_data, msg)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +107,11 @@ mod tests {
         assert_eq!(v, 0x12345_u32);
     }
 
+    #[test]
+    fn make_err_on_nop_exectx() {
+        let xc = ExecutionContext::nop();
+        let e = make_err!(&xc, 123, "oom-error-text", "look:{}", 123);
+        assert_eq!(*e.get_msg(), *"oom-error-text");
+    }
 
 }
