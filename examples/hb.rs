@@ -1,4 +1,6 @@
 extern crate clap;
+use halfbit::DataCell;
+
 use std::io::{ Read, Seek };
 use std::fmt::Write;
 
@@ -12,32 +14,6 @@ struct Invocation {
 struct ToolError {
     exit_code: u8,
     msg: String
-}
-
-#[derive(Debug)]
-enum AttrValue {
-    Nothing,
-    Bool(bool),
-    U64(u64),
-    I64(i64),
-}
-impl std::fmt::Display for AttrValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AttrValue::Nothing => {
-                write!(f, "null")
-            },
-            AttrValue::Bool(v) => {
-                write!(f, "{}", if *v { "true" } else { "false" })
-            },
-            AttrValue::U64(v) => {
-                write!(f, "{}", v)
-            },
-            AttrValue::I64(v) => {
-                write!(f, "{}", v)
-            },
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -133,19 +109,19 @@ fn qread(f: &mut std::fs::File,
 
 fn extract_first_byte<'a>(
     item: &mut Item<'a>,
-) -> Result<AttrValue, AttrComputeError> {
+) -> Result<DataCell, AttrComputeError> {
     let mut buf = [0u8, 1];
     if let Err(e) = qread(&mut item.file, 0, &mut buf) {
         Err(if e.kind() == std::io::ErrorKind::UnexpectedEof { AttrComputeError::NotApplicable } else { AttrComputeError::IO(String::from("boo")) })
     } else {
-        Ok(AttrValue::U64(buf[0] as u64))
+        Ok(DataCell::U64(buf[0] as u64))
     }
 }
 
 fn process_item_attribute<'a>(
     item: &mut Item<'a>,
     attr: &str,
-) -> Result<AttrValue, AttrComputeError> {
+) -> Result<DataCell, AttrComputeError> {
     match attr {
         "first_byte" => extract_first_byte(item),
         _ => Err(AttrComputeError::UnknownAttribute)
