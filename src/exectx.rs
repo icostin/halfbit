@@ -32,11 +32,11 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
-    pub fn get_main_allocator(&self) -> AllocatorRef<'_> {
+    pub fn get_main_allocator(&self) -> AllocatorRef<'a> {
         self.main_allocator
     }
 
-    pub fn get_error_allocator(&self) -> AllocatorRef<'_> {
+    pub fn get_error_allocator(&self) -> AllocatorRef<'a> {
         self.error_allocator
     }
 

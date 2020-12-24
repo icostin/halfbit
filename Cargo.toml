@@ -12,6 +12,7 @@ readme = "README.md"
 [features]
 default = []
 use-libc = ["libc"]
+use-std = []
 
 [dependencies]
 num = ">= 0.1"

@@ -128,6 +128,9 @@ pub mod buffer;
 //pub use buffer::BufferAsRWStream;
 pub use buffer::BufferAsROStream;
 
+#[cfg(feature = "use-std")]
+pub mod std_file;
+
 #[cfg(test)]
 mod tests {
     use super::*;
