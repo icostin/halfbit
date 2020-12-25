@@ -112,6 +112,10 @@ mod tests {
             .write(true)
             .open(path).unwrap();
         let stream: &mut dyn Stream = &mut f;
+        assert!(stream.provider_name().contains("std-file"));
+        assert!(stream.supports_read());
+        assert!(stream.supports_write());
+        assert!(stream.supports_seek());
         assert_eq!(stream.write(b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", &mut xc).unwrap(), 36);
         assert_eq!(stream.seek(SeekFrom::Current(-26), &mut xc).unwrap(), 10);
         let mut data = [0_u8; 0x100];
@@ -119,6 +123,18 @@ mod tests {
         assert_eq!(data[0..15], *b"ABCDEFGHIJKLMNO");
         assert_eq!(stream.read(&mut data, &mut xc).unwrap(), 11);
         assert_eq!(data[0..12], *b"PQRSTUVWXYZL");
+        assert!(stream.truncate(22, &mut xc).is_ok());
+        assert_eq!(stream.seek(SeekFrom::Start(20), &mut xc).unwrap(), 20);
+        assert_eq!(stream.read(&mut data, &mut xc).unwrap(), 2);
+        assert_eq!(data[0..4], *b"KLRS");
+        assert_eq!(stream.seek(SeekFrom::End(0), &mut xc).unwrap(), 22);
+        let e = stream.seek(SeekFrom::Current(-30), &mut xc).unwrap_err();
+        assert!(e.get_msg().contains("seek failed"));
+        assert!(e.get_msg().contains("os error"));
+
+        let mut xc = ExecutionContext::nop();
+        let e = stream.seek(SeekFrom::Current(-30), &mut xc).unwrap_err();
+        assert!(e.get_msg().contains("seek failed"));
     }
 
 }
