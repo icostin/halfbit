@@ -52,7 +52,22 @@ pub trait Stream {
     fn supports_write(&self) -> bool { false }
     fn supports_seek(&self) -> bool { false }
     fn provider_name(&self) -> &'static str { "stream" }
+
+    fn read_byte<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOResult<'a, u8> {
+        let mut buf = [0_u8; 1];
+        self.read(&mut buf, exe_ctx)
+            .and_then(|size_read|
+                      if size_read != 0 {
+                          Ok(buf[0])
+                      } else {
+                          Err(IOError::with_str(ErrorCode::UnexpectedEnd, "read byte at EOF"))
+                      })
+    }
 }
+
 
 impl FmtWrite for dyn Stream {
     fn write_str(&mut self, s: &str) -> FmtResult {
@@ -127,6 +142,7 @@ impl Stream for Zero {
 pub mod buffer;
 //pub use buffer::BufferAsRWStream;
 pub use buffer::BufferAsROStream;
+pub use buffer::BufferAsOnePassROStream;
 
 #[cfg(feature = "use-std")]
 pub mod std_file;
@@ -267,5 +283,29 @@ mod tests {
         assert!(!f.supports_write());
         let e = f.write(&buf, &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
+    }
+
+    #[test]
+    fn read_byte_when_read_has_1_byte() {
+        let mut stream = BufferAsOnePassROStream::new(b"!");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_byte(&mut xc).unwrap(), 0x21);
+    }
+
+    #[test]
+    fn read_byte_when_no_data_is_left() {
+        let mut stream = BufferAsOnePassROStream::new(b"");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
+            ErrorCode::UnexpectedEnd);
+
+    }
+
+    #[test]
+    fn read_byte_when_read_returns_error() {
+        let mut stream = DefaultStream { };
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
+            ErrorCode::UnsupportedOperation);
     }
 }
