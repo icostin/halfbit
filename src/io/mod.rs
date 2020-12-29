@@ -11,6 +11,27 @@ pub enum ErrorCode {
     NoSpace,
 }
 
+impl ErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ErrorCode::Unsuccessful => "unsuccesful",
+            ErrorCode::UnsupportedOperation => "unsupported operation",
+            ErrorCode::Interrupted => "interrupted",
+            ErrorCode::WouldBlock => "would block",
+            ErrorCode::BadOsHandle => "bad OS handle",
+            ErrorCode::UnexpectedEnd => "unexpected end",
+            ErrorCode::UnsupportedPosition => "unsupported position",
+            ErrorCode::NoSpace => "no space",
+        }
+    }
+}
+
+impl core::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(self.as_str(), f)
+    }
+}
+
 pub type IOError<'a> = crate::error::Error<'a, ErrorCode>;
 pub type IOResult<'a, T> = Result<T, IOError<'a>>;
 

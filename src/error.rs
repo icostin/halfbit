@@ -1,5 +1,6 @@
 use crate::mm::String;
 use core::fmt::Debug;
+use core::fmt::Display;
 
 #[derive(Debug)]
 pub struct Error<'a, T>
@@ -20,6 +21,13 @@ where T: Sized + Debug {
     pub fn get_msg(&self) -> &str { self.msg.as_str() }
     pub fn to_parts(self) -> (T, String<'a>) {
         (self.data, self.msg)
+    }
+}
+
+impl<'a, T> Display for Error<'a, T>
+where T: Debug + Display {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{} ({})", self.get_data(), self.get_msg())
     }
 }
 
