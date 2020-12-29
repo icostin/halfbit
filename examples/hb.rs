@@ -1,8 +1,12 @@
 extern crate clap;
 use halfbit::DataCell;
-
-use std::io::{ Read, Seek };
-use std::fmt::Write;
+use halfbit::mm::Allocator;
+use halfbit::mm::Malloc;
+use halfbit::ExecutionContext;
+use halfbit::io::stream::Stream;
+use halfbit::io::stream::NULL_STREAM;
+use halfbit::io::ErrorCode as IOErrorCode;
+use halfbit::io::IOError;
 
 #[derive(Debug)]
 struct Invocation {
@@ -17,23 +21,13 @@ struct ToolError {
 }
 
 #[derive(Debug)]
-enum AttrComputeError {
+enum AttrComputeError<'a> {
     UnknownAttribute,
     NotApplicable,
-    IO(String),
+    IO(IOError<'a>),
 }
 
-impl std::convert::From<std::io::Error> for AttrComputeError {
-    fn from(error: std::io::Error) -> Self {
-        let mut msg = String::new();
-        if write!(msg, "{}", error).is_err() {
-            msg = String::from("failed");
-        }
-        AttrComputeError::IO(msg)
-    }
-}
-
-impl std::fmt::Display for AttrComputeError {
+impl<'a> std::fmt::Display for AttrComputeError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AttrComputeError::UnknownAttribute => write!(f, "unknown attribute"),
@@ -45,14 +39,36 @@ impl std::fmt::Display for AttrComputeError {
 
 struct Item<'a> {
     name: &'a str,
-    file: std::fs::File,
+    stream: &'a mut (dyn Stream + 'a),
 }
 
-enum ItemProcessingStatus {
-    Success,
-    InaccessibleItem,
-    DoneWithErrors(isize),
+struct ProcessingStatus {
+    accessible_items: usize,
+    inaccessible_items: usize,
+    attributes_computed_ok: usize,
+    attributes_not_applicable: usize,
+    attributes_failed_to_compute: usize,
 }
+
+impl ProcessingStatus {
+    pub fn new () -> Self {
+        ProcessingStatus {
+            accessible_items: 0,
+            inaccessible_items: 0,
+            attributes_computed_ok: 0,
+            attributes_not_applicable: 0,
+            attributes_failed_to_compute: 0,
+        }
+    }
+    pub fn add(&mut self, other: &Self) {
+        self.accessible_items += other.accessible_items;
+        self.inaccessible_items += other.inaccessible_items;
+        self.attributes_computed_ok += other.attributes_computed_ok;
+        self.attributes_not_applicable += other.attributes_not_applicable;
+        self.attributes_failed_to_compute += other.attributes_failed_to_compute;
+    }
+}
+
 
 /* process_args *************************************************************/
 fn process_args(args: Vec<String>) -> Result<Invocation, ToolError> {
@@ -100,89 +116,109 @@ fn process_args(args: Vec<String>) -> Result<Invocation, ToolError> {
     Ok(inv)
 }
 
-fn qread(f: &mut std::fs::File,
-         pos: u64,
-         buf: &mut [u8]) -> std::io::Result<()> {
-    let _pos = f.seek(std::io::SeekFrom::Start(pos))?;
-    f.read_exact(buf)
-}
-
-fn extract_first_byte<'a>(
+fn extract_first_byte<'a, 'x>(
     item: &mut Item<'a>,
-) -> Result<DataCell, AttrComputeError> {
-    let mut buf = [0u8, 1];
-    if let Err(e) = qread(&mut item.file, 0, &mut buf) {
-        Err(if e.kind() == std::io::ErrorKind::UnexpectedEof { AttrComputeError::NotApplicable } else { AttrComputeError::IO(String::from("boo")) })
-    } else {
-        Ok(DataCell::U64(buf[0] as u64))
-    }
+    xc: &mut ExecutionContext<'x>,
+) -> Result<DataCell, AttrComputeError<'x>> {
+
+    item.stream.read_byte(xc)
+    .map(|v| DataCell::U64(v as u64))
+    .map_err(|e|
+        if *e.get_data() == IOErrorCode::UnexpectedEnd {
+            AttrComputeError::NotApplicable
+        } else {
+            AttrComputeError::IO(e)
+        })
 }
 
-fn process_item_attribute<'a>(
+fn process_item_attribute<'a, 'x>(
     item: &mut Item<'a>,
     attr: &str,
-) -> Result<DataCell, AttrComputeError> {
+    xc: &mut ExecutionContext<'x>,
+) -> Result<DataCell, AttrComputeError<'x>> {
     match attr {
-        "first_byte" => extract_first_byte(item),
+        "first_byte" => extract_first_byte(item, xc),
         _ => Err(AttrComputeError::UnknownAttribute)
     }
 }
 
-fn process_item(
+fn process_item<'x>(
     item_name: &str,
     invocation: &Invocation,
-) -> ItemProcessingStatus {
+    xc: &mut ExecutionContext<'x>,
+) -> ProcessingStatus {
+    let mut status = ProcessingStatus::new();
+
     if invocation.verbose {
         eprintln!("processing {:?}", item_name);
     }
-    let f = std::fs::File::open(item_name);
-    if f.is_err() {
-        eprintln!("error opening file {:?}: {}", item_name, f.unwrap_err());
-        return ItemProcessingStatus::InaccessibleItem;
-    }
+    let mut f = match std::fs::File::open(item_name) {
+        Ok(f) => {
+            status.accessible_items = 1;
+            f
+        },
+        Err(e) => {
+            eprintln!("error opening file {:?}: {}", item_name, e);
+            return status;
+        }
+    };
     let mut item = Item {
         name: item_name,
-        file: f.unwrap(),
+        stream: &mut f,
     };
-
-    let mut error_count = 0isize;
 
     for attr in &invocation.attributes {
         if invocation.verbose {
             eprintln!("computing attribute {:?} for item {:?}",
                       attr, item_name);
         }
-        match process_item_attribute(&mut item, attr) {
+        match process_item_attribute(&mut item, attr, xc) {
             Ok(av) => {
                 println!("{:?}\t{}\t{}", item_name, attr, av);
+                status.attributes_computed_ok += 1;
             },
             Err(e) => {
-            error_count += 1;
-            eprintln!("error:{:?}:{:?}:{}", item.name, attr, e);
+                match e {
+                    AttrComputeError::NotApplicable => {
+                        status.attributes_not_applicable += 1;
+                        eprintln!("warning:{:?}:{:?}:{}", item.name, attr, e);
+                    },
+                    _ => {
+                        status.attributes_failed_to_compute += 1;
+                        eprintln!("error:{:?}:{:?}:{}", item.name, attr, e);
+                    }
+                }
             },
         }
     }
-
-    if error_count > 0 {
-        ItemProcessingStatus::DoneWithErrors(error_count)
-    } else {
-        ItemProcessingStatus::Success
-    }
+    status
 }
 
 /* run **********************************************************************/
-fn run(invocation: &Invocation) -> Result<(), ToolError> {
+fn run(
+    invocation: &Invocation,
+    xc: &mut ExecutionContext<'_>
+) -> Result<(), ToolError> {
     if invocation.verbose {
         println!("lib: {}", halfbit::lib_name());
     }
-    let mut rc = 0u8;
+    let mut summary = ProcessingStatus::new();
     for item in &invocation.items {
-        match process_item(item, invocation) {
-            ItemProcessingStatus::Success => {},
-            ItemProcessingStatus::InaccessibleItem => rc |= 2,
-            ItemProcessingStatus::DoneWithErrors(_) => rc |= 1,
-        }
+        summary.add(&process_item(item, invocation, xc));
     }
+    if invocation.verbose {
+        println!("accessible items: {}", summary.accessible_items);
+        println!("inaccessible items: {}", summary.inaccessible_items);
+        println!("attributes computed ok: {}", summary.attributes_computed_ok);
+        println!("attributes not applicable: {}", summary.attributes_not_applicable);
+        println!("attributes failed to compute: {}", summary.attributes_failed_to_compute);
+    }
+    let rc = 0_u8
+        | if summary.inaccessible_items != 0 { 4 } else { 0 }
+        | if summary.attributes_failed_to_compute != 0 { 2 } else { 0 }
+        | if summary.attributes_not_applicable != 0 { 1 } else { 0 }
+        | 0_u8;
+
     if rc == 0 {
         Ok(())
     } else {
@@ -195,14 +231,15 @@ fn run(invocation: &Invocation) -> Result<(), ToolError> {
 
 /* main *********************************************************************/
 fn main() {
-    let result = match process_args(std::env::args().collect()) {
-        Ok(invocation) => run(&invocation),
-        Err(te) => Err(te)
-    };
-
-    if let Err(e) = result {
+    process_args(std::env::args().collect())
+    .and_then(|invocation| {
+        let a = Malloc::new();
+        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get());
+        run(&invocation, &mut xc)
+    })
+    .unwrap_or_else(|e| {
         eprintln!("{}", e.msg);
         std::process::exit(e.exit_code as i32);
-    }
+    });
 }
 
