@@ -18,8 +18,8 @@ pub trait Read {
         _buf: &mut [u8],
         _exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, usize> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
-                              "read not supported"))
+        Err(IOError::with_str(
+                ErrorCode::UnsupportedOperation, "read not supported"))
     }
     fn read_byte<'a>(
         &mut self,
@@ -31,7 +31,8 @@ pub trait Read {
             if size_read != 0 {
                 Ok(buf[0])
             } else {
-                Err(IOError::with_str(ErrorCode::UnexpectedEnd, "read byte at EOF"))
+                Err(IOError::with_str(
+                    ErrorCode::UnexpectedEnd, "read byte after EOF"))
             })
      }
 }
@@ -42,8 +43,8 @@ pub trait Write {
         _buf: &[u8],
         _exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, usize> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
-                              "write not supported"))
+        Err(IOError::with_str(
+                ErrorCode::UnsupportedOperation, "write not supported"))
     }
 }
 
@@ -53,8 +54,8 @@ pub trait Seek {
         _target: SeekFrom,
         _exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, u64> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
-                              "seek not supported"))
+        Err(IOError::with_str(
+                ErrorCode::UnsupportedOperation, "seek not supported"))
     }
 }
 
@@ -64,8 +65,8 @@ pub trait Truncate {
         _size: u64,
         _exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, ()> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
-                              "truncate not supported"))
+        Err(IOError::with_str(
+                ErrorCode::UnsupportedOperation, "truncate not supported"))
     }
 }
 
