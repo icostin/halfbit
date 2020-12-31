@@ -1,14 +1,19 @@
 extern crate std;
 use core::fmt::Write as FmtWrite;
-use std::io::Read;
-use std::io::Write;
-use std::io::Seek;
+use std::io::Read as StdRead;
+use std::io::Write as StdWrite;
+use std::io::Seek as StdSeek;
 use std::io::ErrorKind as StdIOErrorKind;
 use std::io::SeekFrom as StdIOSeekFrom;
 use std::fs::File;
 
-use super::Stream;
+use super::Read;
+use super::Write;
+use super::Seek;
 use super::SeekFrom;
+use super::Truncate;
+use super::RandomAccessRead;
+use super::Stream;
 
 use crate::mm::AllocatorRef;
 use crate::mm::String;
@@ -50,31 +55,40 @@ impl From<SeekFrom> for std::io::SeekFrom {
     }
 }
 
-impl Stream for File {
+impl Read for File {
     fn read<'a>(
         &mut self,
         buf: &mut [u8],
         exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, usize> {
-        Read::read(self, buf)
+        StdRead::read(self, buf)
             .map_err(|e| convert_error(e, "read failed", exe_ctx))
     }
+}
+
+impl Write for File {
     fn write<'a>(
         &mut self,
         buf: &[u8],
         exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, usize> {
-        Write::write(self, buf)
+        StdWrite::write(self, buf)
             .map_err(|e| convert_error(e, "write failed", exe_ctx))
     }
+}
+
+impl Seek for File {
     fn seek<'a>(
         &mut self,
         target: SeekFrom,
         exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, u64> {
-        Seek::seek(self, target.into())
+        StdSeek::seek(self, target.into())
             .map_err(|e| convert_error(e, "seek failed", exe_ctx))
     }
+}
+
+impl Truncate for File {
     fn truncate<'a>(
         &mut self,
         size: u64,
@@ -83,11 +97,10 @@ impl Stream for File {
         File::set_len(self, size)
             .map_err(|e| convert_error(e, "truncate failed", exe_ctx))
     }
-    fn supports_read(&self) -> bool { true }
-    fn supports_write(&self) -> bool { true }
-    fn supports_seek(&self) -> bool { true }
-    fn provider_name(&self) -> &'static str { "std-file" }
 }
+
+impl RandomAccessRead for File {}
+impl Stream for File {}
 
 #[cfg(test)]
 mod tests {
@@ -112,10 +125,6 @@ mod tests {
             .write(true)
             .open(path).unwrap();
         let stream: &mut dyn Stream = &mut f;
-        assert!(stream.provider_name().contains("std-file"));
-        assert!(stream.supports_read());
-        assert!(stream.supports_write());
-        assert!(stream.supports_seek());
         assert_eq!(stream.write(b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", &mut xc).unwrap(), 36);
         assert_eq!(stream.seek(SeekFrom::Current(-26), &mut xc).unwrap(), 10);
         let mut data = [0_u8; 0x100];

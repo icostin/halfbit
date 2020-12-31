@@ -34,7 +34,6 @@ pub trait Read {
                 Err(IOError::with_str(ErrorCode::UnexpectedEnd, "read byte at EOF"))
             })
      }
- 
 }
 
 pub trait Write {
@@ -69,6 +68,10 @@ pub trait Truncate {
                               "truncate not supported"))
     }
 }
+
+pub trait RandomAccessRead: Read + Seek {}
+
+pub trait Stream: RandomAccessRead + Write + Truncate {}
 
 impl<'a> FmtWrite for dyn Write + 'a {
     fn write_str(&mut self, s: &str) -> FmtResult {
@@ -123,6 +126,7 @@ impl Write for Null {
 
 impl Seek for Null {}
 impl Truncate for Null {}
+impl RandomAccessRead for Null {}
 
 pub struct Zero {}
 impl Zero {

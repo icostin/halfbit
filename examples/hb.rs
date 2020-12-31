@@ -3,10 +3,10 @@ use halfbit::DataCell;
 use halfbit::mm::Allocator;
 use halfbit::mm::Malloc;
 use halfbit::ExecutionContext;
-use halfbit::io::stream::Stream;
 use halfbit::io::stream::NULL_STREAM;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
+use halfbit::io::stream::RandomAccessRead;
 
 #[derive(Debug)]
 struct Invocation {
@@ -39,7 +39,7 @@ impl<'a> std::fmt::Display for AttrComputeError<'a> {
 
 struct Item<'a> {
     name: &'a str,
-    stream: &'a mut (dyn Stream + 'a),
+    stream: &'a mut (dyn RandomAccessRead + 'a),
 }
 
 struct ProcessingStatus {

@@ -80,7 +80,7 @@ mod tests {
         let mut buf = [0_u8; 0x100];
         let a = BumpAllocator::new(&mut buf);
         let mut log = NullStream::new();
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log);
         assert!(xc.get_main_allocator().name().contains("bump"));
         assert!(xc.get_error_allocator().name().contains("bump"));
     }
