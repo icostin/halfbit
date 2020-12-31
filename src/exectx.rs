@@ -3,14 +3,14 @@ use crate::mm::Box;
 use crate::mm::AllocError;
 use crate::mm::Allocator;
 use crate::mm::NOP_ALLOCATOR;
-use crate::io::stream::Stream;
+use crate::io::stream::Write;
 use crate::io::stream::NULL_STREAM;
 
 /* ExecutionContext *********************************************************/
 pub struct ExecutionContext<'a> {
     main_allocator: AllocatorRef<'a>,
     error_allocator: AllocatorRef<'a>,
-    log_stream: &'a mut (dyn Stream + 'a),
+    log_stream: &'a mut (dyn Write + 'a),
     // TODO: some TLS-style storage
 }
 
@@ -19,7 +19,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn new(
         main_allocator: AllocatorRef<'a>,
         error_allocator: AllocatorRef<'a>,
-        log_stream: &'a mut (dyn Stream + 'a),
+        log_stream: &'a mut (dyn Write + 'a),
     ) -> ExecutionContext<'a> {
         ExecutionContext { main_allocator, error_allocator, log_stream }
     }
@@ -40,7 +40,7 @@ impl<'a> ExecutionContext<'a> {
         self.error_allocator
     }
 
-    pub fn get_log_stream(&mut self) -> &mut (dyn Stream + '_) {
+    pub fn get_log_stream(&mut self) -> &mut (dyn Write + '_) {
         self.log_stream
     }
 
@@ -83,7 +83,6 @@ mod tests {
         let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log);
         assert!(xc.get_main_allocator().name().contains("bump"));
         assert!(xc.get_error_allocator().name().contains("bump"));
-        assert!(xc.get_log_stream().provider_name().contains("null-stream"));
     }
 
     #[test]

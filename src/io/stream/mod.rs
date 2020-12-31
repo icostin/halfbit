@@ -12,64 +12,65 @@ pub enum SeekFrom {
     End(i64),
 }
 
-pub trait Stream {
+pub trait Read {
     fn read<'a>(
         &mut self,
         _buf: &mut [u8],
         _exe_ctx: &mut ExecutionContext<'a>
     ) -> IOResult<'a, usize> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation, "read not supported"))
+        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
+                              "read not supported"))
     }
-    fn write<'a>(
-        &mut self,
-        _buf: &[u8],
-        _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<'a, usize> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation, "write not supported"))
-    }
-    fn seek<'a>(
-        &mut self,
-        _target: SeekFrom,
-        _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<'a, u64> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation, "seek not supported"))
-    }
-    fn truncate<'a>(
-        &mut self,
-        _size: u64,
-        _exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<'a, ()> {
-        Err(IOError::with_str(ErrorCode::UnsupportedOperation, "truncate not supported"))
-    }
-    fn write_str<'a>(
-        &mut self,
-        data: &str,
-        exe_ctx: &mut ExecutionContext<'a>
-    ) -> IOResult<'a, usize> {
-        self.write(data.as_bytes(), exe_ctx)
-    }
-    fn supports_read(&self) -> bool { false }
-    fn supports_write(&self) -> bool { false }
-    fn supports_seek(&self) -> bool { false }
-    fn provider_name(&self) -> &'static str { "stream" }
-
     fn read_byte<'a>(
         &mut self,
         exe_ctx: &mut ExecutionContext<'a>,
     ) -> IOResult<'a, u8> {
         let mut buf = [0_u8; 1];
         self.read(&mut buf, exe_ctx)
-            .and_then(|size_read|
-                      if size_read != 0 {
-                          Ok(buf[0])
-                      } else {
-                          Err(IOError::with_str(ErrorCode::UnexpectedEnd, "read byte at EOF"))
-                      })
+        .and_then(|size_read|
+            if size_read != 0 {
+                Ok(buf[0])
+            } else {
+                Err(IOError::with_str(ErrorCode::UnexpectedEnd, "read byte at EOF"))
+            })
+     }
+ 
+}
+
+pub trait Write {
+    fn write<'a>(
+        &mut self,
+        _buf: &[u8],
+        _exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOResult<'a, usize> {
+        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
+                              "write not supported"))
     }
 }
 
+pub trait Seek {
+    fn seek<'a>(
+        &mut self,
+        _target: SeekFrom,
+        _exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOResult<'a, u64> {
+        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
+                              "seek not supported"))
+    }
+}
 
-impl FmtWrite for dyn Stream {
+pub trait Truncate {
+    fn truncate<'a>(
+        &mut self,
+        _size: u64,
+        _exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOResult<'a, ()> {
+        Err(IOError::with_str(ErrorCode::UnsupportedOperation,
+                              "truncate not supported"))
+    }
+}
+
+impl<'a> FmtWrite for dyn Write + 'a {
     fn write_str(&mut self, s: &str) -> FmtResult {
         let mut xc = ExecutionContext::nop();
         self.write(s.as_bytes(), &mut xc)?;
@@ -81,7 +82,7 @@ pub struct Null { }
 
 impl Null {
     pub fn new() -> Null {
-        Null { }
+        Null {}
     }
 }
 
@@ -101,9 +102,7 @@ pub static NULL_STREAM: NullWrapper = NullWrapper {
     n: UnsafeCell::new(Null{})
 };
 
-impl Stream for Null {
-    fn provider_name(&self) -> &'static str { "null-stream" }
-    fn supports_read(&self) -> bool { true }
+impl Read for Null {
     fn read<'a>(
         &mut self,
         _buf: &mut [u8],
@@ -111,7 +110,8 @@ impl Stream for Null {
     ) -> IOResult<'a, usize> {
         Ok(0)
     }
-    fn supports_write(&self) -> bool { true }
+}
+impl Write for Null {
     fn write<'a>(
         &mut self,
         buf: &[u8],
@@ -121,12 +121,14 @@ impl Stream for Null {
     }
 }
 
-pub struct Zero { }
+impl Seek for Null {}
+impl Truncate for Null {}
+
+pub struct Zero {}
 impl Zero {
-    pub fn new() -> Zero { Zero { } }
+    pub fn new() -> Zero { Zero {} }
 }
-impl Stream for Zero {
-    fn supports_read(&self) -> bool { true }
+impl Read for Zero {
     fn read<'a>(
         &mut self,
         buf: &mut [u8],
@@ -138,6 +140,9 @@ impl Stream for Zero {
         Ok(buf.len())
     }
 }
+impl Write for Zero {}
+impl Seek for Zero {}
+impl Truncate for Zero {}
 
 pub mod buffer;
 //pub use buffer::BufferAsRWStream;
@@ -155,8 +160,11 @@ mod tests {
     use crate::mm::NOP_ALLOCATOR;
     use crate::io::ErrorCode;
 
-    struct DefaultStream { }
-    impl Stream for DefaultStream { }
+    struct DefaultStream {}
+    impl Read for DefaultStream {}
+    impl Write for DefaultStream {}
+    impl Seek for DefaultStream {}
+    impl Truncate for DefaultStream {}
 
     #[test]
     fn default_read_returns_unsupported() {
@@ -164,7 +172,6 @@ mod tests {
         let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
         let mut ds = DefaultStream { };
         let mut buf = [0_u8; 4];
-        assert!(!ds.supports_read());
         let e = ds.read(&mut buf, &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
         assert!(e.get_msg().contains("read not supported"));
@@ -176,7 +183,6 @@ mod tests {
         let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
         let mut ds = DefaultStream { };
         let buf = [0_u8; 4];
-        assert!(!ds.supports_write());
         let e = ds.write(&buf, &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
         assert!(e.get_msg().contains("write not supported"));
@@ -187,7 +193,6 @@ mod tests {
         let mut log = Null::new();
         let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
         let mut ds = DefaultStream { };
-        assert!(!ds.supports_seek());
         let e = ds.seek(SeekFrom::Start(123), &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
         assert!(e.get_msg().contains("seek not supported"));
@@ -204,19 +209,12 @@ mod tests {
     }
 
     #[test]
-    fn default_stream_provider_name() {
-        let ds = DefaultStream { };
-        assert!(ds.provider_name().contains("stream"));
-    }
-
-    #[test]
     fn null_read_outputs_0_bytes() {
         let mut log = Null::new();
         let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
 
         let mut n = Null::new();
         let mut buf = [0_u8; 4];
-        assert!(n.supports_read());
         assert_eq!(n.read(&mut buf, &mut xc).unwrap(), 0);
     }
 
@@ -227,24 +225,14 @@ mod tests {
 
         let mut n = Null::new();
         let buf = [0_u8; 7];
-        assert!(n.supports_write());
         assert_eq!(n.write(&buf, &mut xc).unwrap(), buf.len());
     }
 
     #[test]
     fn null_write_str_consumes_all_buffer() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
-
         let mut n = Null::new();
-        assert!(n.supports_write());
-        assert_eq!(n.write_str("abc", &mut xc).unwrap(), 3);
-    }
-
-    #[test]
-    fn null_provider_name() {
-        let n = Null::new();
-        assert!(n.provider_name().contains("null"));
+        let nw: &mut dyn Write = &mut n;
+        nw.write_str("abc").unwrap();
     }
 
     #[test]
@@ -262,7 +250,7 @@ mod tests {
     #[test]
     fn fmt_into_null_stream() {
         let mut n = Null::new();
-        let nn: &mut dyn Stream = &mut n;
+        let nn: &mut dyn Write = &mut n;
         write!(nn, "This is {:?}: {} = 0x{:04X}!", "so easy", 1234, 1234).unwrap();
     }
 
@@ -271,7 +259,6 @@ mod tests {
         let mut f = Zero::new();
         let mut buf = [1_u8; 5];
         let mut xc = ExecutionContext::nop();
-        assert!(f.supports_read());
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), buf.len());
     }
 
@@ -280,7 +267,6 @@ mod tests {
         let mut f = Zero::new();
         let buf = [1_u8; 5];
         let mut xc = ExecutionContext::nop();
-        assert!(!f.supports_write());
         let e = f.write(&buf, &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
     }

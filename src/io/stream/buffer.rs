@@ -1,5 +1,8 @@
-use super::Stream;
+use super::Read;
+use super::Write;
+use super::Seek;
 use super::SeekFrom;
+use super::Truncate;
 use crate::io::IOResult;
 use crate::io::IOError;
 use crate::io::ErrorCode;
@@ -14,8 +17,7 @@ impl<'b> BufferAsOnePassROStream<'b> {
         BufferAsOnePassROStream { buffer }
     }
 }
-impl<'b> Stream for BufferAsOnePassROStream<'b> {
-    fn supports_read(&self) -> bool { true }
+impl<'b> Read for BufferAsOnePassROStream<'b> {
     fn read<'a>(
         &mut self,
         buf: &mut [u8],
@@ -29,6 +31,9 @@ impl<'b> Stream for BufferAsOnePassROStream<'b> {
         Ok(n)
     }
 }
+impl Seek for BufferAsOnePassROStream<'_> {}
+impl Write for BufferAsOnePassROStream<'_> {}
+impl Truncate for BufferAsOnePassROStream<'_> {}
 
 pub struct BufferAsROStream<'a> {
     buffer: &'a [u8],
@@ -67,8 +72,7 @@ fn relative_position<'a>(
     }
 }
 
-impl Stream for BufferAsROStream<'_> {
-    fn supports_read(&self) -> bool { true }
+impl Read for BufferAsROStream<'_> {
     fn read<'a>(
         &mut self,
         buf: &mut [u8],
@@ -83,8 +87,8 @@ impl Stream for BufferAsROStream<'_> {
         self.position += n as u64;
         Ok(n)
     }
-
-    fn supports_seek(&self) -> bool { true }
+}
+impl Seek for BufferAsROStream<'_> {
     fn seek<'a>(
         &mut self,
         target: SeekFrom,
@@ -104,8 +108,9 @@ impl Stream for BufferAsROStream<'_> {
         }
         Ok(self.position)
     }
-
 }
+impl Write for BufferAsROStream<'_> {}
+impl Truncate for BufferAsROStream<'_> {}
 
 pub struct BufferAsRWStream<'a> {
     buffer: &'a mut [u8],
@@ -126,8 +131,7 @@ impl<'a> BufferAsRWStream<'a> {
     }
 }
 
-impl Stream for BufferAsRWStream<'_> {
-    fn supports_read(&self) -> bool { true }
+impl Read for BufferAsRWStream<'_> {
     fn read<'a>(
         &mut self,
         buf: &mut [u8],
@@ -142,8 +146,9 @@ impl Stream for BufferAsRWStream<'_> {
         self.position += n as u64;
         Ok(n)
     }
+}
 
-    fn supports_seek(&self) -> bool { true }
+impl Seek for BufferAsRWStream<'_> {
     fn seek<'a>(
         &mut self,
         target: SeekFrom,
@@ -163,8 +168,9 @@ impl Stream for BufferAsRWStream<'_> {
         }
         Ok(self.position)
     }
+}
 
-    fn supports_write(&self) -> bool { true }
+impl Write for BufferAsRWStream<'_> {
     fn write<'a>(
         &mut self,
         buf: &[u8],
@@ -185,6 +191,7 @@ impl Stream for BufferAsRWStream<'_> {
     }
 }
 
+impl Truncate for BufferAsRWStream<'_> {}
 
 #[cfg(test)]
 mod tests {
@@ -205,7 +212,6 @@ mod tests {
         let mut f = BufferAsOnePassROStream::new(b"Hello world!");
         let mut buf = [0_u8; 7];
         let mut xc = ExecutionContext::nop();
-        assert!(f.supports_read());
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 7);
         assert_eq!(buf, *b"Hello w");
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 5);
@@ -217,7 +223,6 @@ mod tests {
     fn buf_one_pass_ro_no_seek() {
         let mut f = BufferAsOnePassROStream::new(b"Hello world!");
         let mut xc = ExecutionContext::nop();
-        assert!(!f.supports_seek());
         assert!(f.seek(SeekFrom::Start(0), &mut xc).is_err());
         assert!(f.seek(SeekFrom::Current(0), &mut xc).is_err());
         assert!(f.seek(SeekFrom::End(0), &mut xc).is_err());
@@ -229,7 +234,6 @@ mod tests {
         let buf = [0_u8; 1];
         let mut xc = ExecutionContext::nop();
 
-        assert!(!f.supports_write());
         let e = f.write(&buf, &mut xc).unwrap_err();
 
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
@@ -240,7 +244,6 @@ mod tests {
         let mut f = BufferAsROStream::new(b"Hello world!");
         let mut buf = [0_u8; 7];
         let mut xc = ExecutionContext::nop();
-        assert!(f.supports_read());
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 7);
         assert_eq!(buf, *b"Hello w");
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 5);
@@ -249,8 +252,9 @@ mod tests {
 
     #[test]
     fn buf_ro_supports_seek() {
-        let f = BufferAsROStream::new(b"Hello world!");
-        assert!(f.supports_seek());
+        let mut f = BufferAsROStream::new(b"Hello world!");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(f.seek(SeekFrom::Current(4), &mut xc).unwrap(), 4);
     }
 
     #[test]
@@ -323,7 +327,6 @@ mod tests {
         let buf = [0_u8; 1];
         let mut xc = ExecutionContext::nop();
 
-        assert!(!f.supports_write());
         let e = f.write(&buf, &mut xc).unwrap_err();
 
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
@@ -343,7 +346,6 @@ mod tests {
         let mut f = BufferAsRWStream::new(&mut data, 11);
         let mut buf = [0_u8; 7];
         let mut xc = ExecutionContext::nop();
-        assert!(f.supports_read());
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 7);
         assert_eq!(buf, *b"Hello w");
         assert_eq!(f.read(&mut buf, &mut xc).unwrap(), 4);
@@ -353,8 +355,9 @@ mod tests {
     #[test]
     fn buf_rw_supports_seek() {
         let mut data = [0_u8; 13];
-        let f = BufferAsRWStream::new(&mut data, 11);
-        assert!(f.supports_seek());
+        let mut f = BufferAsRWStream::new(&mut data, 11);
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(f.seek(SeekFrom::Start(8), &mut xc).unwrap(), 8);
     }
 
     #[test]
@@ -423,7 +426,6 @@ mod tests {
             let mut f = BufferAsRWStream::new(&mut data, 10);
             let mut xc = ExecutionContext::nop();
 
-            assert!(f.supports_write());
             assert_eq!(f.write(b"abcde", &mut xc).unwrap(), 5);
         }
         assert_eq!(data, *b"abcde56789ABCD");
