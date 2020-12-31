@@ -70,8 +70,10 @@ pub trait Truncate {
 }
 
 pub trait RandomAccessRead: Read + Seek {}
+impl<T: Read + Seek> RandomAccessRead for T {}
 
 pub trait Stream: RandomAccessRead + Write + Truncate {}
+impl<T: RandomAccessRead + Write + Truncate> Stream for T {}
 
 impl<'a> FmtWrite for dyn Write + 'a {
     fn write_str(&mut self, s: &str) -> FmtResult {
@@ -126,7 +128,6 @@ impl Write for Null {
 
 impl Seek for Null {}
 impl Truncate for Null {}
-impl RandomAccessRead for Null {}
 
 pub struct Zero {}
 impl Zero {
@@ -149,7 +150,7 @@ impl Seek for Zero {}
 impl Truncate for Zero {}
 
 pub mod buffer;
-//pub use buffer::BufferAsRWStream;
+pub use buffer::BufferAsRWStream;
 pub use buffer::BufferAsROStream;
 pub use buffer::BufferAsOnePassROStream;
 

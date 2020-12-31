@@ -12,8 +12,6 @@ use super::Write;
 use super::Seek;
 use super::SeekFrom;
 use super::Truncate;
-use super::RandomAccessRead;
-use super::Stream;
 
 use crate::mm::AllocatorRef;
 use crate::mm::String;
@@ -55,7 +53,7 @@ impl From<SeekFrom> for std::io::SeekFrom {
     }
 }
 
-impl Read for File {
+impl<T: StdRead> Read for T {
     fn read<'a>(
         &mut self,
         buf: &mut [u8],
@@ -66,7 +64,7 @@ impl Read for File {
     }
 }
 
-impl Write for File {
+impl<T: StdWrite> Write for T {
     fn write<'a>(
         &mut self,
         buf: &[u8],
@@ -77,7 +75,7 @@ impl Write for File {
     }
 }
 
-impl Seek for File {
+impl<T: StdSeek> Seek for T {
     fn seek<'a>(
         &mut self,
         target: SeekFrom,
@@ -99,15 +97,13 @@ impl Truncate for File {
     }
 }
 
-impl RandomAccessRead for File {}
-impl Stream for File {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::env;
     use std::fs::OpenOptions;
     use crate::io::stream::NULL_STREAM;
+    use crate::io::stream::Stream;
     use crate::mm::Allocator;
     use crate::mm::BumpAllocator;
 
