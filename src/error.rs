@@ -40,6 +40,9 @@ where T: Sized + Debug {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+    use std::string::String as StdString;
+    use core::fmt::Write as FmtWrite;
     use super::*;
 
     #[test]
@@ -53,5 +56,13 @@ mod tests {
     fn fmt_error_from_error() {
         let e = Error::with_str(0x123_u32, "abc");
         let _fe: core::fmt::Error = e.into();
+    }
+
+    #[test]
+    fn display_fmt_error() {
+        let e = Error::with_str(123_u32, "bla");
+        let mut s = StdString::new();
+        write!(s, "{}", e).unwrap();
+        assert_eq!(s, "123 (bla)");
     }
 }
