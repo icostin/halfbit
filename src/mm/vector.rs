@@ -1,4 +1,6 @@
 use core::ptr::NonNull;
+use core::fmt::Display;
+use core::fmt::Formatter;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -152,6 +154,21 @@ impl<'a, T> Drop for Vector<'a, T> {
                 );
             }
         }
+    }
+}
+
+impl<'a, T: Display> Display for Vector<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut first = true;
+        for v in self.as_slice() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ", ")?;
+            }
+            Display::fmt(v, f)?;
+        }
+        Ok(())
     }
 }
 

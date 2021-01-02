@@ -1,27 +1,39 @@
+use core::fmt::Debug;
 use core::fmt::Display;
 use core::fmt::UpperHex;
 use core::fmt::Formatter;
 
+use crate::mm::Vector;
+use crate::mm::String;
+
 #[derive(Debug)]
-pub enum DataCell {
+pub enum DataCell<'a> {
     Nothing,
     Bool(bool),
     U64(u64),
     I64(i64),
+    String(String<'a>),
+    Identifier(String<'a>),
+    ByteVector(Vector<'a, u8>),
+    CellVector(Vector<'a, Self>),
 }
 
-impl DataCell {
+impl<'a> DataCell<'a> {
     pub fn type_name(&self) -> &'static str {
         match self {
             DataCell::Nothing => "nothing",
             DataCell::Bool(_) => "bool",
             DataCell::U64(_) => "uint64",
             DataCell::I64(_) => "int64",
+            DataCell::String(_) => "string",
+            DataCell::Identifier(_) => "identifier",
+            DataCell::ByteVector(_) => "byte_vector",
+            DataCell::CellVector(_) => "cell_vector",
         }
     }
 }
 
-impl Display for DataCell {
+impl Display for DataCell<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             DataCell::Nothing => {
@@ -31,17 +43,21 @@ impl Display for DataCell {
                 let s = if *v { "true" } else { "false" };
                 Display::fmt(s, f)
             },
-            DataCell::U64(v) => {
-                Display::fmt(v, f)
-            },
-            DataCell::I64(v) => {
-                Display::fmt(v, f)
-            },
+            DataCell::U64(v) => { Display::fmt(v, f) },
+            DataCell::I64(v) => { Display::fmt(v, f) },
+            DataCell::String(v) => { Debug::fmt(v, f) },
+            DataCell::Identifier(v) => { Display::fmt(v, f) },
+            DataCell::ByteVector(v) => { Debug::fmt(v.as_slice(), f) },
+            DataCell::CellVector(v) => {
+                write!(f, "[")?;
+                Display::fmt(v, f)?;
+                write!(f, "]")
+            }
         }
     }
 }
 
-impl UpperHex for DataCell {
+impl UpperHex for DataCell<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             DataCell::U64(v) => UpperHex::fmt(v, f),
@@ -57,6 +73,8 @@ mod tests {
     extern crate std;
     use std::string::String as StdString;
     use super::*;
+    use crate::mm::Allocator;
+    use crate::mm::NOP_ALLOCATOR;
 
     #[test]
     fn nothing_type_name() {
@@ -76,6 +94,26 @@ mod tests {
     #[test]
     fn i64_type_name() {
         assert_eq!(DataCell::I64(-1).type_name(), "int64");
+    }
+
+    #[test]
+    fn string_type_name() {
+        assert_eq!(DataCell::String(String::map_str("bla")).type_name(), "string");
+    }
+
+    #[test]
+    fn identifier_type_name() {
+        assert_eq!(DataCell::Identifier(String::map_str("bla")).type_name(), "identifier");
+    }
+
+    #[test]
+    fn byte_vector_type_name() {
+        assert_eq!(DataCell::ByteVector(Vector::new(NOP_ALLOCATOR.to_ref())).type_name(), "byte_vector");
+    }
+
+    #[test]
+    fn cell_vector_type_name() {
+        assert_eq!(DataCell::CellVector(Vector::new(NOP_ALLOCATOR.to_ref())).type_name(), "cell_vector");
     }
 
     #[test]
@@ -133,5 +171,44 @@ mod tests {
         assert_eq!(s, "ABC  ");
     }
 
+    #[test]
+    fn string_fmt() {
+        let mut s = StdString::new();
+        write!(s, "{}", DataCell::String(String::map_str("abc\tdef\n"))).unwrap();
+        assert_eq!(s, "\"abc\\tdef\\n\"");
+    }
+
+    #[test]
+    fn identifier_fmt() {
+        let mut s = StdString::new();
+        write!(s, "{}", DataCell::Identifier(String::map_str("abc-def"))).unwrap();
+        assert_eq!(s, "abc-def");
+    }
+
+    #[test]
+    fn byte_vector_fmt() {
+        let mut s = StdString::new();
+        write!(s, "{}", DataCell::ByteVector(Vector::map_slice(b"abc-def\x00\x01\xFF."))).unwrap();
+        //TODO: get here: assert_eq!(s, "b\"abc-def\\x00\\x01\\xFF.\"");
+        assert_eq!(s, "[97, 98, 99, 45, 100, 101, 102, 0, 1, 255, 46]");
+    }
+
+    #[test]
+    fn cell_vector_fmt() {
+        let cells = [
+            DataCell::Nothing,
+            DataCell::Bool(true),
+            DataCell::U64(0x123),
+            DataCell::I64(-111),
+            DataCell::String(String::map_str("hello")),
+            DataCell::Identifier(String::map_str("body")),
+            DataCell::ByteVector(Vector::map_slice(b"bin")),
+            DataCell::CellVector(Vector::new(NOP_ALLOCATOR.to_ref())),
+        ];
+        let v = DataCell::CellVector(Vector::map_slice(&cells));
+        let mut s = StdString::new();
+        write!(s, "{}", v).unwrap();
+        assert_eq!(s, "[, true, 291, -111, \"hello\", body, [98, 105, 110], []]");
+    }
 }
 

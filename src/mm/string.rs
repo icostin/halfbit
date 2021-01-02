@@ -1,7 +1,10 @@
 use super::Vector;
 use super::AllocatorRef;
+use core::fmt::Debug;
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
+use core::fmt::Display as FmtDisplay;
+use core::fmt::Formatter as FmtFormatter;
 
 // UTF-8 string
 pub struct String<'a> {
@@ -32,12 +35,15 @@ impl FmtWrite for String<'_> {
     }
 }
 
-impl<'a> core::fmt::Debug for String<'a> {
-    fn fmt(
-        &self,
-        fmt: &mut core::fmt::Formatter<'_>
-    ) -> core::result::Result<(), core::fmt::Error> {
+impl<'a> Debug for String<'a> {
+    fn fmt(&self, fmt: &mut FmtFormatter<'_>) -> FmtResult {
         core::fmt::Debug::fmt(self.as_str(), fmt)
+    }
+}
+
+impl<'a> FmtDisplay for String<'a> {
+    fn fmt(&self, fmt: &mut FmtFormatter<'_>) -> FmtResult {
+        FmtDisplay::fmt(self.as_str(), fmt)
     }
 }
 
