@@ -1,7 +1,9 @@
 extern crate clap;
 use halfbit::DataCell;
 use halfbit::mm::Allocator;
+use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
+use halfbit::mm::Vector;
 use halfbit::ExecutionContext;
 use halfbit::io::stream::NULL_STREAM;
 use halfbit::io::ErrorCode as IOErrorCode;
@@ -24,6 +26,7 @@ struct ToolError {
 enum AttrComputeError<'a> {
     UnknownAttribute,
     NotApplicable,
+    Alloc(AllocError),
     IO(IOError<'a>),
 }
 
@@ -32,8 +35,21 @@ impl<'a> std::fmt::Display for AttrComputeError<'a> {
         match self {
             AttrComputeError::UnknownAttribute => write!(f, "unknown attribute"),
             AttrComputeError::NotApplicable => write!(f, "not applicable"),
+            AttrComputeError::Alloc(ae) => write!(f, "{:?}", ae),
             AttrComputeError::IO(x) => write!(f, "I/O error: {}", x),
         }
+    }
+}
+
+impl<'a> core::convert::From<IOError<'a>> for AttrComputeError<'a> {
+    fn from(e: IOError<'a>) -> Self {
+        AttrComputeError::IO(e)
+    }
+}
+
+impl<'a> core::convert::From<AllocError> for AttrComputeError<'a> {
+    fn from(e: AllocError) -> Self {
+        AttrComputeError::Alloc(e)
     }
 }
 
@@ -116,11 +132,10 @@ fn process_args(args: Vec<String>) -> Result<Invocation, ToolError> {
     Ok(inv)
 }
 
-fn extract_first_byte<'a, 'x>(
+fn extract_first_byte <'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell, AttrComputeError<'x>> {
-
+) -> Result<DataCell<'x>, AttrComputeError<'x>> {
     item.stream.read_byte(xc)
     .map(|v| DataCell::U64(v as u64))
     .map_err(|e|
@@ -131,13 +146,32 @@ fn extract_first_byte<'a, 'x>(
         })
 }
 
+fn first_8_bytes<'a, 'x>(
+    item: &mut Item<'a>,
+    xc: &mut ExecutionContext<'x>,
+) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+    let mut buf = [0_u8; 8];
+    let n = item.stream.read(&mut buf, xc)?;
+    Ok(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &buf[0..n])?))
+}
+
+fn identify_top_of_file_records<'a, 'x>(
+    item: &mut Item<'a>,
+    xc: &mut ExecutionContext<'x>,
+) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+    let ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
+    Ok(DataCell::CellVector(ids))
+}
+
 fn process_item_attribute<'a, 'x>(
     item: &mut Item<'a>,
     attr: &str,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell, AttrComputeError<'x>> {
+) -> Result<DataCell<'x>, AttrComputeError<'x>> {
     match attr {
         "first_byte" => extract_first_byte(item, xc),
+        "first_8_bytes" => first_8_bytes(item, xc),
+        "tof_ids" => identify_top_of_file_records(item, xc),
         _ => Err(AttrComputeError::UnknownAttribute)
     }
 }
