@@ -47,7 +47,19 @@ impl Display for DataCell<'_> {
             DataCell::I64(v) => { Display::fmt(v, f) },
             DataCell::String(v) => { Debug::fmt(v, f) },
             DataCell::Identifier(v) => { Display::fmt(v, f) },
-            DataCell::ByteVector(v) => { Debug::fmt(v.as_slice(), f) },
+            DataCell::ByteVector(v) => {
+                write!(f, "b\"")?;
+                for &b in v.as_slice() {
+                    if b == 0x22 || b == 0x5C {
+                        write!(f, "\\{}", b as char)?;
+                    } else if b >= 0x20_u8 && b <= 0x7E_u8 {
+                        write!(f, "{}", b as char)?;
+                    } else {
+                        write!(f, "\\x{:02X}", b)?;
+                    }
+                }
+                write!(f, "\"")
+            },
             DataCell::CellVector(v) => {
                 write!(f, "[")?;
                 Display::fmt(v, f)?;
@@ -188,9 +200,9 @@ mod tests {
     #[test]
     fn byte_vector_fmt() {
         let mut s = StdString::new();
-        write!(s, "{}", DataCell::ByteVector(Vector::map_slice(b"abc-def\x00\x01\xFF."))).unwrap();
-        //TODO: get here: assert_eq!(s, "b\"abc-def\\x00\\x01\\xFF.\"");
-        assert_eq!(s, "[97, 98, 99, 45, 100, 101, 102, 0, 1, 255, 46]");
+        write!(s, "{}", DataCell::ByteVector(Vector::map_slice(b"abc-def\x00\x01\xFF\\\"."))).unwrap();
+        assert_eq!(s, "b\"abc-def\\x00\\x01\\xFF\\\\\\\".\"");
+        //assert_eq!(s, "[97, 98, 99, 45, 100, 101, 102, 0, 1, 255, 46]");
     }
 
     #[test]
@@ -208,7 +220,7 @@ mod tests {
         let v = DataCell::CellVector(Vector::map_slice(&cells));
         let mut s = StdString::new();
         write!(s, "{}", v).unwrap();
-        assert_eq!(s, "[, true, 291, -111, \"hello\", body, [98, 105, 110], []]");
+        assert_eq!(s, "[, true, 291, -111, \"hello\", body, b\"bin\", []]");
     }
 }
 
