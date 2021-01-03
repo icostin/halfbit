@@ -136,6 +136,16 @@ impl<'a, T> Vector<'a, T> {
         self.len += src.len();
         Ok(())
     }
+
+    pub fn from_slice(
+        allocator: AllocatorRef<'a>,
+        src: &[T]
+    ) -> Result<Self, AllocError>
+    where T: Copy {
+        let mut v: Self = Vector::new(allocator);
+        v.append_from_slice(src)?;
+        Ok(v)
+    }
 }
 
 impl<'a, T> Drop for Vector<'a, T> {
@@ -333,6 +343,16 @@ mod tests {
         let a = SingleAlloc::new(&mut buffer);
         let ar = a.to_ref();
         let _v = ar.vector::<()>();
+    }
+
+    #[test]
+    fn from_slice() {
+        let mut buffer = [0u8; 100];
+        let a = SingleAlloc::new(&mut buffer);
+        let x: [u16; 4] = [ 2, 4, 6, 8 ];
+        let mut v = Vector::from_slice(a.to_ref(), &x).unwrap();
+        v.as_mut_slice()[2] = 7;
+        assert_eq!(v.as_slice(), [2_u16, 4_u16, 7_u16, 8_u16 ]);
     }
 }
 
