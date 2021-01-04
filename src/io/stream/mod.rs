@@ -38,15 +38,9 @@ pub trait Read {
                     size_read += n;
                     buf = &mut buf[n..];
                 },
-                Err(e) => {
-                    match e.get_data() {
-                        ErrorCode::Interrupted => {
-                            continue;
-                        },
-                        _ => {
-                            return (size_read, Err(e));
-                        }
-                    }
+                Err(e) => match e.get_data() {
+                    ErrorCode::Interrupted => {},
+                    _ => { return (size_read, Err(e)); }
                 }
             }
         }
@@ -348,8 +342,7 @@ mod tests {
                     Ok(0)
                 }
                 15 => Err(IOError::with_str(ErrorCode::Unsuccessful, "meh")),
-                _ => {
-                    let b = self.1;
+                _ => { let b = self.1;
                     if cmd > buf.len() {
                         self.0 = (self.0 << 4) | (cmd - buf.len()) as u64;
                         cmd = buf.len();
@@ -366,19 +359,37 @@ mod tests {
     }
     #[test]
     fn read_uninterrupted_ok() {
-        let mut r = IntermittentReader(0x203040, 0x10);
-        let mut buf1 = [0_u8; 6];
         let mut xc = ExecutionContext::nop();
+        let mut r = IntermittentReader(0x2030220, 0x10);
+        let mut buf1 = [0_u8; 6];
         let (n1, r1) = r.read_uninterrupted(&mut buf1, &mut xc);
         assert_eq!(n1, 6);
         assert_eq!(r.0, 0x201);
+        assert_eq!(r.1, 0x12);
+        r1.unwrap();
+        assert_eq!(buf1, *b"\x10\x10\x11\x11\x12\x12");
+        let mut buf2 = [0_u8; 16];
+        let (n2, r2) = r.read_uninterrupted(&mut buf2, &mut xc);
+        assert_eq!(n2, 3);
+        assert_eq!(buf2[0..3], *b"\x12\x13\x13");
+        r2.unwrap();
+    }
+
+    #[test]
+    fn read_uninterrupted_with_error() {
+        let mut xc = ExecutionContext::nop();
+        let mut r = IntermittentReader(0x2F3040, 0x10);
+
+        let mut buf1 = [0_u8; 6];
+        let (n1, r1) = r.read_uninterrupted(&mut buf1, &mut xc);
+        assert_eq!(n1, 6);
+        assert_eq!(r.0, 0x2F1);
         assert_eq!(r.1, 0x11);
         r1.unwrap();
         assert_eq!(buf1, *b"\x10\x10\x10\x10\x11\x11");
         let mut buf2 = [0_u8; 16];
         let (n2, r2) = r.read_uninterrupted(&mut buf2, &mut xc);
-        assert_eq!(n2, 3);
-        assert_eq!(buf2[0..3], *b"\x11\x12\x12");
-        r2.unwrap();
+        assert_eq!(n2, 1);
+        assert_eq!(*r2.unwrap_err().get_data(), ErrorCode::Unsuccessful);
     }
 }
