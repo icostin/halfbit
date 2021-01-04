@@ -1,9 +1,11 @@
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
 use core::cell::UnsafeCell;
-use super::IOResult;
-use super::IOError;
 use super::ErrorCode;
+use super::IOError;
+use super::IOPartialError;
+use super::IOResult;
+use super::IOPartialResult;
 use crate::exectx::ExecutionContext;
 
 pub enum SeekFrom {
@@ -25,26 +27,24 @@ pub trait Read {
         &mut self,
         buf: &mut [u8],
         exe_ctx: &mut ExecutionContext<'a>
-    ) -> (usize, IOResult<'a, ()>) {
+    ) -> IOPartialResult<'a, usize> {
         let mut size_read = 0_usize;
         let mut buf = &mut buf[..];
 
         while buf.len() != 0 {
             match self.read(buf, exe_ctx) {
                 Ok(n) => {
-                    if n == 0 {
-                        break;
-                    }
+                    if n == 0 { break; }
                     size_read += n;
                     buf = &mut buf[n..];
                 },
                 Err(e) => match e.get_data() {
                     ErrorCode::Interrupted => {},
-                    _ => { return (size_read, Err(e)); }
+                    _ => { return Err(IOPartialError::from_error_and_size(e, size_read)); }
                 }
             }
         }
-        (size_read, Ok(()))
+        Ok(size_read)
     }
     fn read_byte<'a>(
         &mut self,
@@ -362,17 +362,14 @@ mod tests {
         let mut xc = ExecutionContext::nop();
         let mut r = IntermittentReader(0x2030220, 0x10);
         let mut buf1 = [0_u8; 6];
-        let (n1, r1) = r.read_uninterrupted(&mut buf1, &mut xc);
-        assert_eq!(n1, 6);
+        assert_eq!(r.read_uninterrupted(&mut buf1, &mut xc).unwrap(), 6);
         assert_eq!(r.0, 0x201);
         assert_eq!(r.1, 0x12);
-        r1.unwrap();
         assert_eq!(buf1, *b"\x10\x10\x11\x11\x12\x12");
+
         let mut buf2 = [0_u8; 16];
-        let (n2, r2) = r.read_uninterrupted(&mut buf2, &mut xc);
-        assert_eq!(n2, 3);
+        assert_eq!(r.read_uninterrupted(&mut buf2, &mut xc).unwrap(), 3);
         assert_eq!(buf2[0..3], *b"\x12\x13\x13");
-        r2.unwrap();
     }
 
     #[test]
@@ -381,15 +378,14 @@ mod tests {
         let mut r = IntermittentReader(0x2F3040, 0x10);
 
         let mut buf1 = [0_u8; 6];
-        let (n1, r1) = r.read_uninterrupted(&mut buf1, &mut xc);
-        assert_eq!(n1, 6);
+        assert_eq!(r.read_uninterrupted(&mut buf1, &mut xc).unwrap(), 6);
         assert_eq!(r.0, 0x2F1);
         assert_eq!(r.1, 0x11);
-        r1.unwrap();
         assert_eq!(buf1, *b"\x10\x10\x10\x10\x11\x11");
+
         let mut buf2 = [0_u8; 16];
-        let (n2, r2) = r.read_uninterrupted(&mut buf2, &mut xc);
-        assert_eq!(n2, 1);
-        assert_eq!(*r2.unwrap_err().get_data(), ErrorCode::Unsuccessful);
+        let e2 = r.read_uninterrupted(&mut buf2, &mut xc).unwrap_err();
+        assert_eq!(e2.get_processed_size(), 1);
+        assert_eq!(e2.get_error_code(), ErrorCode::Unsuccessful);
     }
 }
