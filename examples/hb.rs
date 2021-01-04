@@ -156,7 +156,7 @@ fn first_8_bytes<'a, 'x>(
 }
 
 fn identify_top_of_file_records<'a, 'x>(
-    item: &mut Item<'a>,
+    _item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, AttrComputeError<'x>> {
     let ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());

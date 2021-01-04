@@ -21,6 +21,37 @@ pub trait Read {
         Err(IOError::with_str(
                 ErrorCode::UnsupportedOperation, "read not supported"))
     }
+    fn read_uninterrupted<'a>(
+        &mut self,
+        buf: &mut [u8],
+        exe_ctx: &mut ExecutionContext<'a>
+    ) -> (usize, IOResult<'a, ()>) {
+        let mut size_read = 0_usize;
+        let mut buf = &mut buf[..];
+
+        while buf.len() != 0 {
+            match self.read(buf, exe_ctx) {
+                Ok(n) => {
+                    if n == 0 {
+                        break;
+                    }
+                    size_read += n;
+                    buf = &mut buf[n..];
+                },
+                Err(e) => {
+                    match e.get_data() {
+                        ErrorCode::Interrupted => {
+                            continue;
+                        },
+                        _ => {
+                            return (size_read, Err(e));
+                        }
+                    }
+                }
+            }
+        }
+        (size_read, Ok(()))
+    }
     fn read_byte<'a>(
         &mut self,
         exe_ctx: &mut ExecutionContext<'a>,
@@ -299,5 +330,55 @@ mod tests {
         let mut xc = ExecutionContext::nop();
         assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
             ErrorCode::UnsupportedOperation);
+    }
+
+    struct IntermittentReader(u64, u8);
+    impl Read for IntermittentReader {
+        fn read<'a>(
+            &mut self,
+            buf: &mut [u8],
+            _exe_ctx: &mut ExecutionContext<'a>
+        ) -> IOResult<'a, usize> {
+            let mut cmd = (self.0 & 15) as usize;
+            self.0 >>= 4;
+            match cmd {
+                0 => if self.0 != 0 {
+                    Err(IOError::with_str(ErrorCode::Interrupted, "interrupted"))
+                } else {
+                    Ok(0)
+                }
+                15 => Err(IOError::with_str(ErrorCode::Unsuccessful, "meh")),
+                _ => {
+                    let b = self.1;
+                    if cmd > buf.len() {
+                        self.0 = (self.0 << 4) | (cmd - buf.len()) as u64;
+                        cmd = buf.len();
+                    } else {
+                        self.1 += 1;
+                    }
+                    for v in buf[0..cmd].iter_mut() {
+                        *v = b;
+                    }
+                    Ok(cmd)
+                }
+            }
+        }
+    }
+    #[test]
+    fn read_uninterrupted_ok() {
+        let mut r = IntermittentReader(0x203040, 0x10);
+        let mut buf1 = [0_u8; 6];
+        let mut xc = ExecutionContext::nop();
+        let (n1, r1) = r.read_uninterrupted(&mut buf1, &mut xc);
+        assert_eq!(n1, 6);
+        assert_eq!(r.0, 0x201);
+        assert_eq!(r.1, 0x11);
+        r1.unwrap();
+        assert_eq!(buf1, *b"\x10\x10\x10\x10\x11\x11");
+        let mut buf2 = [0_u8; 16];
+        let (n2, r2) = r.read_uninterrupted(&mut buf2, &mut xc);
+        assert_eq!(n2, 3);
+        assert_eq!(buf2[0..3], *b"\x11\x12\x12");
+        r2.unwrap();
     }
 }
