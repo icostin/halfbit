@@ -1,4 +1,6 @@
-#[derive(PartialEq, Debug)]
+use crate::error::Error;
+
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[non_exhaustive]
 pub enum ErrorCode {
     Unsuccessful, // some error that we cannot map to any of the below
@@ -32,8 +34,28 @@ impl core::fmt::Display for ErrorCode {
     }
 }
 
-pub type IOError<'a> = crate::error::Error<'a, ErrorCode>;
+
+pub type IOError<'a> = Error<'a, ErrorCode>;
 pub type IOResult<'a, T> = Result<T, IOError<'a>>;
+
+pub type IOPartialError<'a> = Error<'a, (ErrorCode, usize)>;
+pub type IOPartialResult<'a, T> = Result<T, IOPartialError<'a>>;
+
+impl<'a> IOPartialError<'a> {
+    pub fn from_error_and_size(
+        e: IOError<'a>,
+        processed_size: usize,
+    ) -> Self {
+        let (code, msg) = e.to_parts();
+        Error::new((code, processed_size), msg)
+    }
+    pub fn get_error_code(&self) -> ErrorCode {
+        self.get_data().0
+    }
+    pub fn get_processed_size(&self) -> usize {
+        self.get_data().1
+    }
+}
 
 pub mod stream;
 pub use stream::Null as NullStream;
@@ -83,5 +105,14 @@ mod tests {
     #[test]
     fn error_code_fmt_no_space() {
         error_code_fmt(ErrorCode::NoSpace, "no space");
+    }
+
+    #[test]
+    fn partial_error_from_error() {
+        let e = IOError::with_str(ErrorCode::NoSpace, "zilch");
+        let pe = IOPartialError::from_error_and_size(e, 7);
+        assert_eq!(pe.get_error_code(), ErrorCode::NoSpace);
+        assert_eq!(pe.get_processed_size(), 7);
+        assert_eq!(pe.get_msg(), "zilch");
     }
 }
