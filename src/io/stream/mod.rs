@@ -7,6 +7,7 @@ use super::IOPartialError;
 use super::IOResult;
 use super::IOPartialResult;
 use crate::exectx::ExecutionContext;
+use crate::xc_err;
 
 pub enum SeekFrom {
     Start(u64),
@@ -15,6 +16,7 @@ pub enum SeekFrom {
 }
 
 pub trait Read {
+
     fn read<'a>(
         &mut self,
         _buf: &mut [u8],
@@ -23,6 +25,7 @@ pub trait Read {
         Err(IOError::with_str(
                 ErrorCode::UnsupportedOperation, "read not supported"))
     }
+
     fn read_uninterrupted<'a>(
         &mut self,
         buf: &mut [u8],
@@ -46,20 +49,29 @@ pub trait Read {
         }
         Ok(size_read)
     }
+
+    fn read_exact<'a>(
+        &mut self,
+        buf: &mut [u8],
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, ()> {
+        let size_read = self.read_uninterrupted(buf, exe_ctx)?;
+        if size_read == buf.len() {
+            Ok(())
+        } else {
+            Err(xc_err!(exe_ctx, (ErrorCode::UnexpectedEnd, size_read), "read_exact encountered EOF", "read_exact got {}/{} bytes", size_read, buf.len()))
+        }
+    }
+
     fn read_byte<'a>(
         &mut self,
         exe_ctx: &mut ExecutionContext<'a>,
-    ) -> IOResult<'a, u8> {
+    ) -> IOPartialResult<'a, u8> {
         let mut buf = [0_u8; 1];
-        self.read(&mut buf, exe_ctx)
-        .and_then(|size_read|
-            if size_read != 0 {
-                Ok(buf[0])
-            } else {
-                Err(IOError::with_str(
-                    ErrorCode::UnexpectedEnd, "read byte after EOF"))
-            })
+        self.read_exact(&mut buf, exe_ctx)
+        .map(|_| buf[0])
      }
+
 }
 
 pub trait Write {
@@ -314,7 +326,7 @@ mod tests {
         let mut stream = BufferAsOnePassROStream::new(b"");
         let mut xc = ExecutionContext::nop();
         assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
-            ErrorCode::UnexpectedEnd);
+            (ErrorCode::UnexpectedEnd, 0));
 
     }
 
@@ -323,7 +335,7 @@ mod tests {
         let mut stream = DefaultStream { };
         let mut xc = ExecutionContext::nop();
         assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
-            ErrorCode::UnsupportedOperation);
+            (ErrorCode::UnsupportedOperation, 0));
     }
 
     struct IntermittentReader(u64, u8);

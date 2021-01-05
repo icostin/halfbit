@@ -139,10 +139,10 @@ fn extract_first_byte <'a, 'x>(
     item.stream.read_byte(xc)
     .map(|v| DataCell::U64(v as u64))
     .map_err(|e|
-        if *e.get_data() == IOErrorCode::UnexpectedEnd {
+        if e.get_error_code() == IOErrorCode::UnexpectedEnd {
             AttrComputeError::NotApplicable
         } else {
-            AttrComputeError::IO(e)
+            AttrComputeError::IO(e.to_error())
         })
 }
 

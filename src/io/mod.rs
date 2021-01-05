@@ -1,3 +1,4 @@
+use crate::mm::String;
 use crate::error::Error;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -38,10 +39,23 @@ impl core::fmt::Display for ErrorCode {
 pub type IOError<'a> = Error<'a, ErrorCode>;
 pub type IOResult<'a, T> = Result<T, IOError<'a>>;
 
+impl<'a> IOError<'a> {
+    pub fn get_error_code(&self) -> ErrorCode {
+        *self.get_data()
+    }
+}
+
 pub type IOPartialError<'a> = Error<'a, (ErrorCode, usize)>;
 pub type IOPartialResult<'a, T> = Result<T, IOPartialError<'a>>;
 
 impl<'a> IOPartialError<'a> {
+    pub fn from_parts(
+        code: ErrorCode,
+        processed_size: usize,
+        msg: String<'a>,
+    ) -> Self {
+        Error::new((code, processed_size), msg)
+    }
     pub fn from_error_and_size(
         e: IOError<'a>,
         processed_size: usize,
@@ -54,6 +68,10 @@ impl<'a> IOPartialError<'a> {
     }
     pub fn get_processed_size(&self) -> usize {
         self.get_data().1
+    }
+    pub fn to_error(self) -> IOError<'a> {
+        let (data, msg) = self.to_parts();
+        Error::new(data.0, msg)
     }
 }
 
@@ -108,11 +126,28 @@ mod tests {
     }
 
     #[test]
+    fn partial_error_from_parts() {
+        let s = String::map_str("big boo-boo");
+        let pe = IOPartialError::from_parts(ErrorCode::UnsupportedPosition, 123, s);
+        assert_eq!(pe.get_error_code(), ErrorCode::UnsupportedPosition);
+        assert_eq!(pe.get_processed_size(), 123);
+        assert_eq!(pe.get_msg(), "big boo-boo");
+    }
+    #[test]
     fn partial_error_from_error() {
         let e = IOError::with_str(ErrorCode::NoSpace, "zilch");
         let pe = IOPartialError::from_error_and_size(e, 7);
         assert_eq!(pe.get_error_code(), ErrorCode::NoSpace);
         assert_eq!(pe.get_processed_size(), 7);
         assert_eq!(pe.get_msg(), "zilch");
+    }
+
+    #[test]
+    fn partial_error_to_error() {
+        let s = String::map_str("big boo-boo");
+        let pe = IOPartialError::from_parts(ErrorCode::UnsupportedPosition, 123, s);
+        let e = pe.to_error();
+        assert_eq!(e.get_error_code(), ErrorCode::UnsupportedPosition);
+        assert_eq!(e.get_msg(), "big boo-boo");
     }
 }

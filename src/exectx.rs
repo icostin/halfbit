@@ -53,7 +53,7 @@ impl<'a> ExecutionContext<'a> {
 }
 
 #[macro_export]
-macro_rules! make_err {
+macro_rules! xc_err {
     ( $xc:expr, $err_data:expr, $oom_msg:expr, $( $x:tt )+ ) => {
         {
             use core::fmt::Write;
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn make_err_on_nop_exectx() {
         let xc = ExecutionContext::nop();
-        let e = make_err!(&xc, 123, "oom-error-text", "look:{}", 123);
+        let e = xc_err!(&xc, 123, "oom-error-text", "look:{}", 123);
         assert_eq!(*e.get_msg(), *"oom-error-text");
     }
 
