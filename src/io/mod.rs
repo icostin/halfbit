@@ -1,3 +1,5 @@
+use core::convert::From;
+
 use crate::mm::String;
 use crate::error::Error;
 
@@ -35,7 +37,6 @@ impl core::fmt::Display for ErrorCode {
     }
 }
 
-
 pub type IOError<'a> = Error<'a, ErrorCode>;
 pub type IOResult<'a, T> = Result<T, IOError<'a>>;
 
@@ -72,6 +73,18 @@ impl<'a> IOPartialError<'a> {
     pub fn to_error(self) -> IOError<'a> {
         let (data, msg) = self.to_parts();
         Error::new(data.0, msg)
+    }
+}
+
+impl<'a> From<IOPartialError<'a>> for IOError<'a> {
+    fn from(src: IOPartialError<'a>) -> Self {
+        src.to_error()
+    }
+}
+
+impl<'a> From<IOError<'a>> for IOPartialError<'a> {
+    fn from(src: IOError<'a>) -> Self {
+        Self::from_error_and_size(src, 0)
     }
 }
 
@@ -134,19 +147,26 @@ mod tests {
         assert_eq!(pe.get_msg(), "big boo-boo");
     }
     #[test]
-    fn partial_error_from_error() {
+    fn partial_error_from_error_with_size() {
         let e = IOError::with_str(ErrorCode::NoSpace, "zilch");
         let pe = IOPartialError::from_error_and_size(e, 7);
         assert_eq!(pe.get_error_code(), ErrorCode::NoSpace);
         assert_eq!(pe.get_processed_size(), 7);
         assert_eq!(pe.get_msg(), "zilch");
     }
-
+    #[test]
+    fn partial_error_from_error() {
+        let e = IOError::with_str(ErrorCode::NoSpace, "zilch");
+        let pe: IOPartialError<'_> = e.into();
+        assert_eq!(pe.get_error_code(), ErrorCode::NoSpace);
+        assert_eq!(pe.get_processed_size(), 0);
+        assert_eq!(pe.get_msg(), "zilch");
+    }
     #[test]
     fn partial_error_to_error() {
         let s = String::map_str("big boo-boo");
         let pe = IOPartialError::from_parts(ErrorCode::UnsupportedPosition, 123, s);
-        let e = pe.to_error();
+        let e: IOError<'_> = pe.into();
         assert_eq!(e.get_error_code(), ErrorCode::UnsupportedPosition);
         assert_eq!(e.get_msg(), "big boo-boo");
     }

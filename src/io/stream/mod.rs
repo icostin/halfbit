@@ -15,6 +15,28 @@ pub enum SeekFrom {
     End(i64),
 }
 
+fn relative_position<'a>(
+    pos: u64,
+    disp: i64
+) -> IOResult<'static, u64> {
+    if disp < 0 {
+        let udisp = -disp as u64;
+        if udisp <= pos {
+            Ok(pos - udisp)
+        } else {
+            Err(IOError::with_str(
+                ErrorCode::UnsupportedPosition,
+                "seek to negative position"))
+        }
+    } else if let Some(new_pos) = pos.checked_add(disp as u64) {
+        Ok(new_pos)
+    } else {
+        Err(IOError::with_str(
+            ErrorCode::UnsupportedPosition,
+            "seek to position too large for u64"))
+    }
+}
+
 pub trait Read {
 
     fn read<'a>(
@@ -107,7 +129,17 @@ pub trait Truncate {
     }
 }
 
-pub trait RandomAccessRead: Read + Seek {}
+pub trait RandomAccessRead: Read + Seek {
+    fn seek_read<'a>(
+        &mut self,
+        pos: u64,
+        buf: &mut [u8],
+        exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOPartialResult<'a, usize> {
+        self.seek(SeekFrom::Start(pos), exe_ctx)?;
+        self.read_uninterrupted(buf, exe_ctx)
+    }
+}
 impl<T: Read + Seek> RandomAccessRead for T {}
 
 pub trait Stream: RandomAccessRead + Write + Truncate {}
@@ -400,4 +432,132 @@ mod tests {
         assert_eq!(e2.get_processed_size(), 1);
         assert_eq!(e2.get_error_code(), ErrorCode::Unsuccessful);
     }
+
+    struct SeekReadTester {
+        pos: u64,
+        interrupt_next_read: bool,
+        fail_start_pos: u64,
+        end_pos: u64,
+    }
+    impl Read for SeekReadTester {
+        fn read<'a>(
+            &mut self,
+            buf: &mut [u8],
+            _exe_ctx: &mut ExecutionContext<'a>
+        ) -> IOResult<'a, usize> {
+            if buf.len() == 0 || self.pos >= self.end_pos {
+                Ok(0)
+            } else if self.pos >= self.fail_start_pos {
+                Err(IOError::with_str(ErrorCode::Unsuccessful, "meh"))
+            } else if self.interrupt_next_read {
+                self.interrupt_next_read = false;
+                Err(IOError::with_str(ErrorCode::Interrupted, "induced interruption"))
+            } else {
+                self.interrupt_next_read = true;
+                buf[0] = ((self.pos & 15) + 0x41) as u8;
+                self.pos += 1;
+                Ok(1)
+            }
+        }
+    }
+    impl Seek for SeekReadTester {
+        fn seek<'a>(
+            &mut self,
+            target: SeekFrom,
+            _exe_ctx: &mut ExecutionContext<'a>
+        ) -> IOResult<'a, u64> {
+            self.pos = match target {
+                SeekFrom::Start(pos) => pos,
+                _ => { panic!("seek_read should only use Start"); }
+            };
+            Ok(self.pos)
+        }
+    }
+
+    #[test]
+    fn seek_read_ok() {
+        let mut f = SeekReadTester {
+            pos: 0,
+            interrupt_next_read: false,
+            fail_start_pos: 16,
+            end_pos: 32,
+        };
+        let mut buf = [0_u8; 5];
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(f.seek_read(1, &mut buf, &mut xc).unwrap(), 5);
+        assert_eq!(buf, *b"BCDEF");
+    }
+
+    #[test]
+    fn seek_read_to_end_ok() {
+        let mut f = SeekReadTester {
+            pos: 0,
+            interrupt_next_read: false,
+            fail_start_pos: 32,
+            end_pos: 32,
+        };
+        let mut buf = [0_u8; 5];
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(f.seek_read(28, &mut buf, &mut xc).unwrap(), 4);
+        assert_eq!(buf, *b"MNOP\x00");
+    }
+
+    #[test]
+    fn seek_read_partial() {
+        let mut f = SeekReadTester {
+            pos: 0,
+            interrupt_next_read: true,
+            fail_start_pos: 16,
+            end_pos: 32,
+        };
+        let mut buf = [0_u8; 5];
+        let mut xc = ExecutionContext::nop();
+        let e = f.seek_read(12, &mut buf, &mut xc).unwrap_err();
+        assert_eq!(e.get_error_code(), ErrorCode::Unsuccessful);
+        assert_eq!(e.get_processed_size(), 4);
+        assert_eq!(buf, *b"MNOP\x00");
+    }
+
+    #[test]
+    fn seek_read_fail() {
+        let mut f = SeekReadTester {
+            pos: 0,
+            interrupt_next_read: true,
+            fail_start_pos: 16,
+            end_pos: 32,
+        };
+        let mut buf = [0_u8; 5];
+        let mut xc = ExecutionContext::nop();
+        let e = f.seek_read(20, &mut buf, &mut xc).unwrap_err();
+        assert_eq!(e.get_error_code(), ErrorCode::Unsuccessful);
+        assert_eq!(e.get_processed_size(), 0);
+        assert_eq!(buf, *b"\x00\x00\x00\x00\x00");
+    }
+
+    #[test]
+    #[should_panic(expected = "should only use Start")]
+    fn seek_read_tester_panics_on_seek_current() {
+        let mut f = SeekReadTester {
+            pos: 0,
+            interrupt_next_read: true,
+            fail_start_pos: 16,
+            end_pos: 32,
+        };
+        let mut xc = ExecutionContext::nop();
+        match f.seek(SeekFrom::Current(0), &mut xc) { _ => () };
+    }
+
+    #[test]
+    #[should_panic(expected = "should only use Start")]
+    fn seek_read_tester_panics_on_seek_end() {
+        let mut f = SeekReadTester {
+            pos: 0,
+            interrupt_next_read: true,
+            fail_start_pos: 16,
+            end_pos: 32,
+        };
+        let mut xc = ExecutionContext::nop();
+        match f.seek(SeekFrom::End(0), &mut xc) { _ => () };
+    }
 }
+

@@ -1,11 +1,13 @@
 extern crate clap;
+
+use std::io::stderr;
+
 use halfbit::DataCell;
+use halfbit::ExecutionContext;
 use halfbit::mm::Allocator;
 use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
-use halfbit::ExecutionContext;
-use halfbit::io::stream::NULL_STREAM;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
 use halfbit::io::stream::RandomAccessRead;
@@ -268,7 +270,9 @@ fn main() {
     process_args(std::env::args().collect())
     .and_then(|invocation| {
         let a = Malloc::new();
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get());
+        let err = stderr();
+        let mut log = err.lock();
+        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log);
         run(&invocation, &mut xc)
     })
     .unwrap_or_else(|e| {

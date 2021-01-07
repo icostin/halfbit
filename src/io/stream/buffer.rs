@@ -1,12 +1,13 @@
+use crate::io::IOResult;
+use crate::io::IOError;
+use crate::io::ErrorCode;
+use crate::ExecutionContext;
 use super::Read;
 use super::Write;
 use super::Seek;
 use super::SeekFrom;
 use super::Truncate;
-use crate::io::IOResult;
-use crate::io::IOError;
-use crate::io::ErrorCode;
-use crate::ExecutionContext;
+use super::relative_position;
 
 pub struct BufferAsOnePassROStream<'b> {
     buffer: &'b [u8],
@@ -49,29 +50,6 @@ impl<'a> BufferAsROStream<'a> {
     }
 }
 
-fn relative_position<'a>(
-    pos: u64,
-    disp: i64,
-    _xc: &mut ExecutionContext<'a>
-) -> IOResult<'a, u64> {
-    if disp < 0 {
-        let udisp = -disp as u64;
-        if udisp <= pos {
-            Ok(pos - udisp)
-        } else {
-            Err(IOError::with_str(
-                ErrorCode::UnsupportedPosition,
-                "seek to negative position"))
-        }
-    } else if let Some(new_pos) = pos.checked_add(disp as u64) {
-        Ok(new_pos)
-    } else {
-        Err(IOError::with_str(
-            ErrorCode::UnsupportedPosition,
-            "seek to position too large for u64"))
-    }
-}
-
 impl Read for BufferAsROStream<'_> {
     fn read<'a>(
         &mut self,
@@ -92,20 +70,13 @@ impl Seek for BufferAsROStream<'_> {
     fn seek<'a>(
         &mut self,
         target: SeekFrom,
-        xc: &mut ExecutionContext<'a>
+        _xc: &mut ExecutionContext<'a>
     ) -> IOResult<'a, u64> {
-        match target {
-            SeekFrom::Start(disp) => {
-                self.position = disp;
-            },
-            SeekFrom::Current(disp) => {
-                self.position = relative_position(self.position, disp, xc)?;
-            },
-            SeekFrom::End(disp) => {
-                self.position = relative_position(
-                    self.buffer.len() as u64, disp, xc)?;
-            }
-        }
+        self.position = match target {
+            SeekFrom::Start(disp) => disp,
+            SeekFrom::Current(disp) => relative_position(self.position, disp)?,
+            SeekFrom::End(disp) => relative_position(self.buffer.len() as u64, disp)?,
+        };
         Ok(self.position)
     }
 }
@@ -152,20 +123,13 @@ impl Seek for BufferAsRWStream<'_> {
     fn seek<'a>(
         &mut self,
         target: SeekFrom,
-        xc: &mut ExecutionContext<'a>
+        _xc: &mut ExecutionContext<'a>
     ) -> IOResult<'a, u64> {
-        match target {
-            SeekFrom::Start(disp) => {
-                self.position = disp;
-            },
-            SeekFrom::Current(disp) => {
-                self.position = relative_position(self.position, disp, xc)?;
-            },
-            SeekFrom::End(disp) => {
-                self.position = relative_position(
-                    self.size as u64, disp, xc)?;
-            }
-        }
+        self.position = match target {
+            SeekFrom::Start(disp) => disp,
+            SeekFrom::Current(disp) => relative_position(self.position, disp)?,
+            SeekFrom::End(disp) => relative_position(self.size as u64, disp)?,
+        };
         Ok(self.position)
     }
 }
@@ -202,8 +166,7 @@ mod tests {
 
     #[test]
     fn rel_pos_larger_than_u64() {
-        let mut xc = ExecutionContext::nop();
-        let e = relative_position(u64::MAX, 1, &mut xc).unwrap_err();
+        let e = relative_position(u64::MAX, 1).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedPosition);
     }
 
