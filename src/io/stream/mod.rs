@@ -170,7 +170,7 @@ impl<T: RandomAccessRead + Write + Truncate> Stream for T {}
 impl<'a> FmtWrite for dyn Write + 'a {
     fn write_str(&mut self, s: &str) -> FmtResult {
         let mut xc = ExecutionContext::nop();
-        self.write(s.as_bytes(), &mut xc)?;
+        self.write_all(s.as_bytes(), &mut xc)?;
         Ok(())
     }
 }

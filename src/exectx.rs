@@ -68,6 +68,18 @@ macro_rules! xc_err {
     }
 }
 
+#[macro_export]
+macro_rules! xc_log_crit {
+    ( $xc: expr, $( $x:tt )+ ) => {
+        {
+            use core::fmt::Write;
+            if let Err(_) = write!($xc.get_log_stream(), $( $x )*) {
+                panic!("failed to log critical error!");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,6 +125,34 @@ mod tests {
         let xc = ExecutionContext::nop();
         let e = xc_err!(&xc, 123, "oom-error-text", "look:{}", 123);
         assert_eq!(*e.get_msg(), *"oom-error-text");
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to log critical error")]
+    fn log_crit_panics_on_write_error() {
+        use crate::io::stream::Zero;
+        let mut log = Zero::new();
+        let mut xc = ExecutionContext::new(
+            NOP_ALLOCATOR.to_ref(),
+            NOP_ALLOCATOR.to_ref(),
+            &mut log,
+        );
+        xc_log_crit!(xc, "should fail to log this critical error message");
+    }
+
+    #[test]
+    fn log_crit() {
+        use crate::io::stream::buffer::BufferAsRWStream;
+        let mut log_buffer = [0xAA_u8; 0x100];
+        let mut log = BufferAsRWStream::new(&mut log_buffer, 0);
+        let mut xc = ExecutionContext::new(
+            NOP_ALLOCATOR.to_ref(),
+            NOP_ALLOCATOR.to_ref(),
+            &mut log,
+        );
+        xc_log_crit!(xc, "CRITICAL: this is not perl: {} != {:?}!!!", 123, "123");
+        let expected = b"CRITICAL: this is not perl: 123 != \"123\"!!!\xAA";
+        assert_eq!(log_buffer[..expected.len()], *expected);
     }
 
 }
