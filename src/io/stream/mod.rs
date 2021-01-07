@@ -105,6 +105,28 @@ pub trait Write {
         Err(IOError::with_str(
                 ErrorCode::UnsupportedOperation, "write not supported"))
     }
+    fn write_all<'a>(
+        &mut self,
+        buf: &[u8],
+        exe_ctx: &mut ExecutionContext<'a>
+    ) -> IOPartialResult<'a, ()> {
+        let mut size_written = 0_usize;
+        let mut buf = &buf[..];
+        while buf.len() > 0 {
+            match self.write(buf, exe_ctx) {
+                Ok(n) => {
+                    size_written += n;
+                    buf = &buf[n..];
+                },
+                Err(e) => match e.get_data() {
+                    ErrorCode::Interrupted => {},
+                    _ => { return Err(IOPartialError::from_error_and_size(e, size_written)); }
+                }
+            }
+        }
+        Ok(())
+    }
+
 }
 
 pub trait Seek {
@@ -559,5 +581,74 @@ mod tests {
         let mut xc = ExecutionContext::nop();
         match f.seek(SeekFrom::End(0), &mut xc) { _ => () };
     }
+
+    struct WriteAllTester {
+        buffer: [u8; 10],
+        size: usize,
+        fail_offset: usize,
+        interrupt_next_write: bool,
+    }
+    impl Write for WriteAllTester {
+        fn write<'a>(
+            &mut self,
+            buf: &[u8],
+            _exe_ctx: &mut ExecutionContext<'a>
+        ) -> IOResult<'a, usize> {
+            if buf.len() == 0 {
+                Ok(0)
+            } else if self.size >= self.buffer.len() {
+                Err(IOError::with_str(ErrorCode::NoSpace, "no space"))
+            } else if self.size == self.fail_offset {
+                self.fail_offset = usize::MAX;
+                Err(IOError::with_str(ErrorCode::Unsuccessful, "induced fail"))
+            } else if self.interrupt_next_write {
+                self.interrupt_next_write = false;
+                Err(IOError::with_str(ErrorCode::Interrupted, "interrupted"))
+            } else {
+                self.interrupt_next_write = true;
+                self.buffer[self.size] = buf[0];
+                self.size += 1;
+                Ok(1)
+            }
+        }
+    }
+
+    #[test]
+    fn write_all_ok() {
+        let mut f = WriteAllTester {
+            buffer: [0_u8; 10],
+            size: 0,
+            fail_offset: 11,
+            interrupt_next_write: true,
+        };
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(f.write(b"", &mut xc).unwrap(), 0);
+        f.write_all(b"ABCDEF", &mut xc).unwrap();
+        let e = f.write_all(b"abcde", &mut xc).unwrap_err();
+        assert_eq!(e.get_processed_size(), 4);
+        assert_eq!(e.get_error_code(), ErrorCode::NoSpace);
+        assert_eq!(f.size, 10);
+        assert_eq!(f.buffer, *b"ABCDEFabcd");
+    }
+
+    #[test]
+    fn write_all_partial() {
+        let mut f = WriteAllTester {
+            buffer: [0_u8; 10],
+            size: 0,
+            fail_offset: 3,
+            interrupt_next_write: true,
+        };
+        let mut xc = ExecutionContext::nop();
+        let e = f.write_all(b"ABCDEF", &mut xc).unwrap_err();
+        assert_eq!(e.get_processed_size(), 3);
+        assert_eq!(e.get_error_code(), ErrorCode::Unsuccessful);
+
+        f.write_all(b"abcde", &mut xc).unwrap();
+        assert_eq!(f.size, 8);
+        assert_eq!(f.buffer[0..8], *b"ABCabcde");
+
+    }
+
 }
 
