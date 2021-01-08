@@ -253,8 +253,6 @@ pub mod std_file;
 mod tests {
     use super::*;
     use crate::exectx::ExecutionContext;
-    use crate::mm::Allocator;
-    use crate::mm::NOP_ALLOCATOR;
     use crate::io::ErrorCode;
 
     struct DefaultStream {}
@@ -265,8 +263,7 @@ mod tests {
 
     #[test]
     fn default_read_returns_unsupported() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
+        let mut xc = ExecutionContext::nop();
         let mut ds = DefaultStream { };
         let mut buf = [0_u8; 4];
         let e = ds.read(&mut buf, &mut xc).unwrap_err();
@@ -276,8 +273,7 @@ mod tests {
 
     #[test]
     fn default_write_returns_unsupported() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
+        let mut xc = ExecutionContext::nop();
         let mut ds = DefaultStream { };
         let buf = [0_u8; 4];
         let e = ds.write(&buf, &mut xc).unwrap_err();
@@ -287,8 +283,7 @@ mod tests {
 
     #[test]
     fn default_seek_returns_unsupported() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
+        let mut xc = ExecutionContext::nop();
         let mut ds = DefaultStream { };
         let e = ds.seek(SeekFrom::Start(123), &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
@@ -297,8 +292,7 @@ mod tests {
 
     #[test]
     fn default_truncate_returns_unsupported() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
+        let mut xc = ExecutionContext::nop();
         let mut ds = DefaultStream { };
         let e = ds.truncate(123, &mut xc).unwrap_err();
         assert_eq!(*e.get_data(), ErrorCode::UnsupportedOperation);
@@ -307,9 +301,7 @@ mod tests {
 
     #[test]
     fn null_read_outputs_0_bytes() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
-
+        let mut xc = ExecutionContext::nop();
         let mut n = Null::new();
         let mut buf = [0_u8; 4];
         assert_eq!(n.read(&mut buf, &mut xc).unwrap(), 0);
@@ -317,9 +309,7 @@ mod tests {
 
     #[test]
     fn null_write_consumes_all_buffer() {
-        let mut log = Null::new();
-        let mut xc = ExecutionContext::new(NOP_ALLOCATOR.to_ref(), NOP_ALLOCATOR.to_ref(), &mut log);
-
+        let mut xc = ExecutionContext::nop();
         let mut n = Null::new();
         let buf = [0_u8; 7];
         assert_eq!(n.write(&buf, &mut xc).unwrap(), buf.len());

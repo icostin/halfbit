@@ -4,6 +4,7 @@ use std::io::stderr;
 
 use halfbit::DataCell;
 use halfbit::ExecutionContext;
+use halfbit::LogLevel;
 use halfbit::mm::Allocator;
 use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
@@ -11,17 +12,14 @@ use halfbit::mm::Vector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
 use halfbit::io::stream::RandomAccessRead;
+use halfbit::log_info;
+use halfbit::log_err;
 
 #[derive(Debug)]
 struct Invocation {
     verbose: bool,
     items: Vec<String>,
     attributes: Vec<String>,
-}
-
-struct ToolError {
-    exit_code: u8,
-    msg: String
 }
 
 #[derive(Debug)]
@@ -89,7 +87,7 @@ impl ProcessingStatus {
 
 
 /* process_args *************************************************************/
-fn process_args(args: Vec<String>) -> Result<Invocation, ToolError> {
+fn process_args(args: Vec<String>) -> Invocation {
     let m = clap::App::new("halfbit")
         .version("0.0")
         .author("by Costin Ionescu <costin.ionescu@gmail.com>")
@@ -131,7 +129,7 @@ fn process_args(args: Vec<String>) -> Result<Invocation, ToolError> {
         eprintln!("inv: {:#?}", inv);
     }
 
-    Ok(inv)
+    inv
 }
 
 fn extract_first_byte <'a, 'x>(
@@ -234,7 +232,7 @@ fn process_item<'x>(
 fn run(
     invocation: &Invocation,
     xc: &mut ExecutionContext<'_>
-) -> Result<(), ToolError> {
+) -> Result<(), u8> {
     if invocation.verbose {
         println!("lib: {}", halfbit::lib_name());
     }
@@ -258,26 +256,27 @@ fn run(
     if rc == 0 {
         Ok(())
     } else {
-        Err(ToolError {
-            exit_code: rc,
-            msg: String::from("completed with errors"),
-        })
+        log_err!(xc, "completed with errors");
+        Err(rc)
     }
 }
 
 /* main *********************************************************************/
 fn main() {
-    process_args(std::env::args().collect())
-    .and_then(|invocation| {
-        let a = Malloc::new();
-        let err = stderr();
-        let mut log = err.lock();
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log);
-        run(&invocation, &mut xc)
-    })
+    let invocation = process_args(std::env::args().collect());
+    let a = Malloc::new();
+    let err = stderr();
+    let mut log = err.lock();
+    let mut xc = ExecutionContext::new(
+        a.to_ref(),
+        a.to_ref(),
+        &mut log,
+        if invocation.verbose { LogLevel::Debug } else { LogLevel::Warning },
+    );
+    run(&invocation, &mut xc)
     .unwrap_or_else(|e| {
-        eprintln!("{}", e.msg);
-        std::process::exit(e.exit_code as i32);
+        log_info!(xc, "* exiting with code {}", e);
+        std::process::exit(e as i32);
     });
 }
 

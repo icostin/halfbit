@@ -106,12 +106,13 @@ mod tests {
     use crate::io::stream::Stream;
     use crate::mm::Allocator;
     use crate::mm::BumpAllocator;
+    use crate::LogLevel;
 
     #[test]
     fn write_seek_read_on_temp_file() {
         let mut alloc_buffer = [0_u8; 0x400];
         let a = BumpAllocator::new(&mut alloc_buffer);
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get());
+        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
 
         let mut path = env::temp_dir();
         path.push("halfbit-std-test-file.dat");

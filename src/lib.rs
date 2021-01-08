@@ -11,6 +11,7 @@ pub mod io; // input/output
 
 pub mod exectx; // execution context
 pub use exectx::ExecutionContext;
+pub use exectx::LogLevel;
 
 pub mod data_cell;
 pub use data_cell::DataCell;
