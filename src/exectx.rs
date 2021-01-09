@@ -121,7 +121,7 @@ macro_rules! log_crit {
 }
 
 #[macro_export]
-macro_rules! log_err {
+macro_rules! log_error {
     ( $xc: expr, $( $x:tt )+ ) => {
         {
             use $crate::LogLevel;
@@ -153,21 +153,18 @@ macro_rules! log_info {
     }
 }
 
-#[cfg(debug)]
 #[macro_export]
 macro_rules! log_debug {
     ( $xc: expr, $( $x:tt )+ ) => {
         {
             use $crate::LogLevel;
             use $crate::log_msg;
-            log_msg!($xc, LogLevel::Debug, $( $x )*);
+            if cfg!(debug_assertions) {
+                log_msg!($xc, LogLevel::Debug, $( $x )*);
+            }
         }
     }
 }
-
-#[cfg(not(debug))]
-#[macro_export]
-macro_rules! log_debug { ( $xc: expr, $( $x:tt )+ ) => {} }
 
 #[cfg(test)]
 mod tests {

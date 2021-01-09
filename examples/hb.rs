@@ -12,8 +12,10 @@ use halfbit::mm::Vector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
 use halfbit::io::stream::RandomAccessRead;
+use halfbit::log_debug;
 use halfbit::log_info;
-use halfbit::log_err;
+use halfbit::log_warn;
+use halfbit::log_error;
 
 #[derive(Debug)]
 struct Invocation {
@@ -124,7 +126,7 @@ fn process_args(args: Vec<String>) -> Invocation {
             },
     };
 
-    if inv.verbose {
+    if cfg!(debug_assertions) && inv.verbose {
         eprintln!("cmd line: {:#?}", m);
         eprintln!("inv: {:#?}", inv);
     }
@@ -184,7 +186,7 @@ fn process_item<'x>(
     let mut status = ProcessingStatus::new();
 
     if invocation.verbose {
-        eprintln!("processing {:?}", item_name);
+        log_info!(xc, "processing {:?}", item_name);
     }
     let mut f = match std::fs::File::open(item_name) {
         Ok(f) => {
@@ -192,7 +194,7 @@ fn process_item<'x>(
             f
         },
         Err(e) => {
-            eprintln!("error opening file {:?}: {}", item_name, e);
+            log_error!(xc, "error opening file {:?}: {}", item_name, e);
             return status;
         }
     };
@@ -203,8 +205,7 @@ fn process_item<'x>(
 
     for attr in &invocation.attributes {
         if invocation.verbose {
-            eprintln!("computing attribute {:?} for item {:?}",
-                      attr, item_name);
+            log_info!(xc, "computing attribute {:?} for item {:?}", attr, item_name);
         }
         match process_item_attribute(&mut item, attr, xc) {
             Ok(av) => {
@@ -215,11 +216,11 @@ fn process_item<'x>(
                 match e {
                     AttrComputeError::NotApplicable => {
                         status.attributes_not_applicable += 1;
-                        eprintln!("warning:{:?}:{:?}:{}", item.name, attr, e);
+                        log_warn!(xc, "warning:{:?}:{:?}:{}", item.name, attr, e);
                     },
                     _ => {
                         status.attributes_failed_to_compute += 1;
-                        eprintln!("error:{:?}:{:?}:{}", item.name, attr, e);
+                        log_error!(xc, "error:{:?}:{:?}:{}", item.name, attr, e);
                     }
                 }
             },
@@ -234,18 +235,18 @@ fn run(
     xc: &mut ExecutionContext<'_>
 ) -> Result<(), u8> {
     if invocation.verbose {
-        println!("lib: {}", halfbit::lib_name());
+        log_info!(xc, "lib: {}", halfbit::lib_name());
     }
     let mut summary = ProcessingStatus::new();
     for item in &invocation.items {
         summary.add(&process_item(item, invocation, xc));
     }
     if invocation.verbose {
-        println!("accessible items: {}", summary.accessible_items);
-        println!("inaccessible items: {}", summary.inaccessible_items);
-        println!("attributes computed ok: {}", summary.attributes_computed_ok);
-        println!("attributes not applicable: {}", summary.attributes_not_applicable);
-        println!("attributes failed to compute: {}", summary.attributes_failed_to_compute);
+        log_info!(xc, "accessible items: {}", summary.accessible_items);
+        log_info!(xc, "inaccessible items: {}", summary.inaccessible_items);
+        log_info!(xc, "attributes computed ok: {}", summary.attributes_computed_ok);
+        log_info!(xc, "attributes not applicable: {}", summary.attributes_not_applicable);
+        log_info!(xc, "attributes failed to compute: {}", summary.attributes_failed_to_compute);
     }
     let rc = 0_u8
         | if summary.inaccessible_items != 0 { 4 } else { 0 }
@@ -256,7 +257,7 @@ fn run(
     if rc == 0 {
         Ok(())
     } else {
-        log_err!(xc, "completed with errors");
+        log_error!(xc, "completed with errors");
         Err(rc)
     }
 }
@@ -275,7 +276,7 @@ fn main() {
     );
     run(&invocation, &mut xc)
     .unwrap_or_else(|e| {
-        log_info!(xc, "* exiting with code {}", e);
+        log_debug!(xc, "* exiting with code {}", e);
         std::process::exit(e as i32);
     });
 }
