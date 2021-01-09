@@ -11,7 +11,9 @@ use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
+use halfbit::io::IOPartialError;
 use halfbit::io::stream::RandomAccessRead;
+use halfbit::io::stream::SeekFrom;
 use halfbit::log_debug;
 use halfbit::log_info;
 use halfbit::log_warn;
@@ -46,6 +48,12 @@ impl<'a> std::fmt::Display for AttrComputeError<'a> {
 impl<'a> core::convert::From<IOError<'a>> for AttrComputeError<'a> {
     fn from(e: IOError<'a>) -> Self {
         AttrComputeError::IO(e)
+    }
+}
+
+impl<'a> core::convert::From<IOPartialError<'a>> for AttrComputeError<'a> {
+    fn from(e: IOPartialError<'a>) -> Self {
+        AttrComputeError::IO(e.to_error())
     }
 }
 
@@ -138,7 +146,9 @@ fn extract_first_byte <'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, AttrComputeError<'x>> {
-    item.stream.read_byte(xc)
+    item.stream.seek(SeekFrom::Start(0), xc)
+    .map_err(|e| IOPartialError::from_error_and_size(e, 0))
+    .and_then(|_| item.stream.read_byte(xc))
     .map(|v| DataCell::U64(v as u64))
     .map_err(|e|
         if e.get_error_code() == IOErrorCode::UnexpectedEnd {
@@ -153,7 +163,7 @@ fn first_8_bytes<'a, 'x>(
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, AttrComputeError<'x>> {
     let mut buf = [0_u8; 8];
-    let n = item.stream.read(&mut buf, xc)?;
+    let n = item.stream.seek_read(0, &mut buf, xc)?;
     Ok(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &buf[0..n])?))
 }
 
