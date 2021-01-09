@@ -1,5 +1,6 @@
 extern crate clap;
 
+use std::string::String as StdString;
 use std::io::stderr;
 
 use halfbit::DataCell;
@@ -9,6 +10,7 @@ use halfbit::mm::Allocator;
 use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
+use halfbit::mm::String as HbString;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
 use halfbit::io::IOPartialError;
@@ -22,8 +24,8 @@ use halfbit::log_error;
 #[derive(Debug)]
 struct Invocation {
     verbose: bool,
-    items: Vec<String>,
-    attributes: Vec<String>,
+    items: Vec<StdString>,
+    attributes: Vec<StdString>,
 }
 
 #[derive(Debug)]
@@ -63,6 +65,12 @@ impl<'a> core::convert::From<AllocError> for AttrComputeError<'a> {
     }
 }
 
+impl<'a> core::convert::From<(AllocError, DataCell<'_>)> for AttrComputeError<'a> {
+    fn from(e: (AllocError, DataCell<'_>)) -> Self {
+        AttrComputeError::Alloc(e.0)
+    }
+}
+
 struct Item<'a> {
     name: &'a str,
     stream: &'a mut (dyn RandomAccessRead + 'a),
@@ -97,7 +105,7 @@ impl ProcessingStatus {
 
 
 /* process_args *************************************************************/
-fn process_args(args: Vec<String>) -> Invocation {
+fn process_args(args: Vec<StdString>) -> Invocation {
     let m = clap::App::new("halfbit")
         .version("0.0")
         .author("by Costin Ionescu <costin.ionescu@gmail.com>")
@@ -122,13 +130,13 @@ fn process_args(args: Vec<String>) -> Invocation {
         verbose: m.is_present("verbose"),
         items:
             if let Some(values) = m.values_of("items") {
-                values.map(|x| String::from(x)).collect()
+                values.map(|x| StdString::from(x)).collect()
             } else {
                 Vec::new()
             },
         attributes:
             if let Some(values) = m.values_of("attr") {
-                values.map(|x| String::from(x)).collect()
+                values.map(|x| StdString::from(x)).collect()
             } else {
                 Vec::new()
             },
@@ -168,10 +176,24 @@ fn first_8_bytes<'a, 'x>(
 }
 
 fn identify_top_of_file_records<'a, 'x>(
-    _item: &mut Item<'a>,
+    item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, AttrComputeError<'x>> {
-    let ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
+    let mut ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
+    let mut tof_buffer = [0_u8; 0x40];
+    let tof_len = item.stream.seek_read(0, &mut tof_buffer, xc)?;
+    let tof = &tof_buffer[0..tof_len];
+    if tof.starts_with(b"PK") {
+        ids.push(DataCell::Identifier(HbString::map_str("zip_record")))?;
+    } else if tof.starts_with(b"#!") {
+        ids.push(DataCell::Identifier(HbString::map_str("shebang")))?;
+    } else if tof.starts_with(b"\x7FELF") {
+        ids.push(DataCell::Identifier(HbString::map_str("elf")))?;
+    } else if tof.starts_with(b"MZ") {
+        ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
+    } else if tof.starts_with(b"ZM") {
+        ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
+    }
     Ok(DataCell::CellVector(ids))
 }
 
