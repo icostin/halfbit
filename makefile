@@ -1,4 +1,4 @@
-.PHONY: dev-build release clean cov
+.PHONY: dev-build release clean cov install
 
 dev-build:
 	cargo test --features=use-libc,use-std
@@ -12,3 +12,6 @@ clean:
 
 cov:
 	cargo tarpaulin --features=use-libc,use-std -o Html
+
+install:
+	cargo install --path . --examples --features=use-libc,use-std

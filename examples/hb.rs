@@ -281,9 +281,10 @@ fn run(
         log_info!(xc, "attributes failed to compute: {}", summary.attributes_failed_to_compute);
     }
     let rc = 0_u8
-        | if summary.inaccessible_items != 0 { 4 } else { 0 }
-        | if summary.attributes_failed_to_compute != 0 { 2 } else { 0 }
         | if summary.attributes_not_applicable != 0 { 1 } else { 0 }
+        | if summary.attributes_failed_to_compute != 0 { 2 } else { 0 }
+        | if summary.inaccessible_items != 0 { 4 } else { 0 }
+        | if xc.get_logging_error_mask() != 0 { 8 } else { 0 }
         | 0_u8;
 
     if rc == 0 {
