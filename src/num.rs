@@ -2,7 +2,7 @@ extern crate num;
 use core::ptr::NonNull;
 
 pub fn is_power_of_2<T> (n: T) -> bool
-    where T: num::traits::Unsigned + num::traits::int::PrimInt {
+where T: num::traits::Unsigned + num::traits::int::PrimInt {
     let zero: T = num::zero();
     let one: T = num::One::one();
     n != zero && (n & (n - one)) == zero

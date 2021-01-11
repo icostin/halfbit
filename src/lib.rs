@@ -16,6 +16,9 @@ pub use exectx::LogLevel;
 pub mod data_cell;
 pub use data_cell::DataCell;
 
+pub mod conv; // converters
+
+
 pub fn lib_name() -> &'static str {
     "halfbit"
 }

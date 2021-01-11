@@ -193,6 +193,8 @@ fn identify_top_of_file_records<'a, 'x>(
         ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
     } else if tof.starts_with(b"ZM") {
         ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
+    } else if tof.starts_with(b"QFI\xFB") {
+        ids.push(DataCell::Identifier(HbString::map_str("qcow")))?;
     }
     Ok(DataCell::CellVector(ids))
 }
