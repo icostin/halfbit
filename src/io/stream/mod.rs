@@ -8,6 +8,7 @@ use super::IOResult;
 use super::IOPartialResult;
 use crate::exectx::ExecutionContext;
 use crate::xc_err;
+use crate::conv::uint_be_decode;
 
 pub enum SeekFrom {
     Start(u64),
@@ -94,6 +95,13 @@ pub trait Read {
         .map(|_| buf[0])
      }
 
+    fn read_u32be<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u32> {
+        let mut buf = [0_u8; 4];
+        self.read_exact(&mut buf, exe_ctx).map(|_| uint_be_decode(&buf).unwrap())
+    }
 }
 
 pub trait Write {
@@ -371,11 +379,33 @@ mod tests {
         let mut xc = ExecutionContext::nop();
         assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),
             (ErrorCode::UnexpectedEnd, 0));
-
     }
 
     #[test]
     fn read_byte_when_read_returns_error() {
+        let mut stream = DefaultStream { };
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnsupportedOperation, 0));
+    }
+
+    #[test]
+    fn read_u32be_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCD");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_u32be(&mut xc).unwrap(), 0x41424344);
+    }
+
+    #[test]
+    fn read_u32be_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABC");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u32be(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 3));
+    }
+
+    #[test]
+    fn read_u32be_when_read_returns_error() {
         let mut stream = DefaultStream { };
         let mut xc = ExecutionContext::nop();
         assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),

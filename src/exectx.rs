@@ -3,6 +3,7 @@ use crate::mm::Box;
 use crate::mm::AllocError;
 use crate::mm::Allocator;
 use crate::mm::NOP_ALLOCATOR;
+use crate::mm::String;
 use crate::io::stream::Write;
 use crate::io::stream::NULL_STREAM;
 
@@ -78,6 +79,10 @@ impl<'a> ExecutionContext<'a> {
         v: T
     ) -> Result<Box<'_, T>, (AllocError, T)> {
         self.get_main_allocator().alloc_item(v)
+    }
+
+    pub fn string(&self) -> String<'a> {
+        String::new(self.get_main_allocator())
     }
 }
 
@@ -243,5 +248,18 @@ mod tests {
         assert_eq!(xc.get_logging_error_mask(), 0);
         assert_eq!(log_buffer[..expected.len()], *expected);
     }
+
+    #[test]
+    fn obtain_string() {
+        use core::fmt::Write;
+        let mut buf = [0_u8; 0x100];
+        let a = BumpAllocator::new(&mut buf);
+        let mut log = NullStream::new();
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
+        let mut s = xc.string();
+        write!(s, "this is the {} of the universe: {}", "meaning", 42).unwrap();
+        assert_eq!(s.as_str(), "this is the meaning of the universe: 42");
+    }
+
 
 }

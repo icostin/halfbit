@@ -2,14 +2,14 @@ extern crate num;
 use core::mem::size_of;
 
 pub fn uint_le_decode<T>(src: &[u8]) -> Option<T>
-where T: num::traits::Unsigned + num::traits::int::PrimInt + core::ops::Shl + core::ops::BitOrAssign {
+where T: num::traits::Unsigned + num::traits::int::PrimInt + core::ops::Shl + core::ops::BitOr {
     if src.len() < size_of::<T>() {
         None
     } else {
         let mut v: T = num::zero();
         let mut sh = 0_usize;
         for b in src[..size_of::<T>()].iter() {
-            v |= T::from(*b).unwrap() << sh;
+            v = v | T::from(*b).unwrap() << sh;
             sh += 8;
         }
         Some(v)

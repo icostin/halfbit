@@ -1,5 +1,6 @@
 extern crate clap;
 
+use core::fmt::Write as FmtWrite;
 use std::string::String as StdString;
 use std::io::stderr;
 
@@ -16,6 +17,7 @@ use halfbit::io::IOError;
 use halfbit::io::IOPartialError;
 use halfbit::io::stream::RandomAccessRead;
 use halfbit::io::stream::SeekFrom;
+use halfbit::conv::uint_be_decode;
 use halfbit::log_debug;
 use halfbit::log_info;
 use halfbit::log_warn;
@@ -195,6 +197,13 @@ fn identify_top_of_file_records<'a, 'x>(
         ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
     } else if tof.starts_with(b"QFI\xFB") {
         ids.push(DataCell::Identifier(HbString::map_str("qcow")))?;
+        if tof_len >= 8 {
+            let ver: u32 = uint_be_decode(&tof[4..8]).unwrap();
+            let mut id = xc.string();
+            write!(id, "qcow{}", ver)
+                .map_err(|_| AttrComputeError::Alloc(AllocError::NotEnoughMemory))?;
+            ids.push(DataCell::Identifier(id))?;
+        }
     }
     Ok(DataCell::CellVector(ids))
 }
