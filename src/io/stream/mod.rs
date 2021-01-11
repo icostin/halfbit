@@ -85,7 +85,7 @@ pub trait Read {
         }
     }
 
-    fn read_byte<'a>(
+    fn read_u8<'a>(
         &mut self,
         exe_ctx: &mut ExecutionContext<'a>,
     ) -> IOPartialResult<'a, u8> {
@@ -362,14 +362,14 @@ mod tests {
     fn read_byte_when_read_has_1_byte() {
         let mut stream = BufferAsOnePassROStream::new(b"!");
         let mut xc = ExecutionContext::nop();
-        assert_eq!(stream.read_byte(&mut xc).unwrap(), 0x21);
+        assert_eq!(stream.read_u8(&mut xc).unwrap(), 0x21);
     }
 
     #[test]
     fn read_byte_when_no_data_is_left() {
         let mut stream = BufferAsOnePassROStream::new(b"");
         let mut xc = ExecutionContext::nop();
-        assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
+        assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),
             (ErrorCode::UnexpectedEnd, 0));
 
     }
@@ -378,7 +378,7 @@ mod tests {
     fn read_byte_when_read_returns_error() {
         let mut stream = DefaultStream { };
         let mut xc = ExecutionContext::nop();
-        assert_eq!(*stream.read_byte(&mut xc).unwrap_err().get_data(),
+        assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),
             (ErrorCode::UnsupportedOperation, 0));
     }
 

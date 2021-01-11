@@ -156,7 +156,7 @@ fn extract_first_byte <'a, 'x>(
 ) -> Result<DataCell<'x>, AttrComputeError<'x>> {
     item.stream.seek(SeekFrom::Start(0), xc)
     .map_err(|e| IOPartialError::from_error_and_size(e, 0))
-    .and_then(|_| item.stream.read_byte(xc))
+    .and_then(|_| item.stream.read_u8(xc))
     .map(|v| DataCell::U64(v as u64))
     .map_err(|e|
         if e.get_error_code() == IOErrorCode::UnexpectedEnd {
