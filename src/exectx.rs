@@ -4,6 +4,7 @@ use crate::mm::AllocError;
 use crate::mm::Allocator;
 use crate::mm::NOP_ALLOCATOR;
 use crate::mm::String;
+use crate::mm::Vector;
 use crate::io::stream::Write;
 use crate::io::stream::NULL_STREAM;
 
@@ -81,6 +82,9 @@ impl<'a> ExecutionContext<'a> {
         self.get_main_allocator().alloc_item(v)
     }
 
+    pub fn vector<T>(&self) -> Vector<'a, T> {
+        Vector::new(self.get_main_allocator())
+    }
     pub fn string(&self) -> String<'a> {
         String::new(self.get_main_allocator())
     }

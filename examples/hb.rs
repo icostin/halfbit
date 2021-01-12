@@ -208,6 +208,17 @@ fn identify_top_of_file_records<'a, 'x>(
     Ok(DataCell::CellVector(ids))
 }
 
+fn elf_header<'a, 'x>(
+    item: &mut Item<'a>,
+    xc: &mut ExecutionContext<'x>,
+) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+    let mut eh: Vector<'x, DataCell<'x>> = xc.vector();
+    let mut magic = [0_u8; 4];
+    item.stream.seek_read(0, &mut magic, xc)?;
+    eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &magic)?))?;
+    Ok(DataCell::Record(eh, &["magic"]))
+}
+
 fn process_item_attribute<'a, 'x>(
     item: &mut Item<'a>,
     attr: &str,
@@ -217,6 +228,7 @@ fn process_item_attribute<'a, 'x>(
         "first_byte" => extract_first_byte(item, xc),
         "first_8_bytes" => first_8_bytes(item, xc),
         "tof_ids" => identify_top_of_file_records(item, xc),
+        "elf_header" => elf_header(item, xc),
         _ => Err(AttrComputeError::UnknownAttribute)
     }
 }

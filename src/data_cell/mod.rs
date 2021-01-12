@@ -68,6 +68,9 @@ impl Display for DataCell<'_> {
                 write!(f, "]")
             }
             DataCell::Record(values, keys) => {
+                if values.is_empty() {
+                    return write!(f, "{{}}")
+                }
                 let mut key_iter = keys.iter();
                 let mut sep = "{ ";
                 for v in values.as_slice().iter() {
@@ -239,6 +242,14 @@ mod tests {
         let mut s = StdString::new();
         write!(s, "{}", v).unwrap();
         assert_eq!(s, "[, true, 291, -111, \"hello\", body, b\"bin\", []]");
+    }
+
+    #[test]
+    fn empty_record_fmt() {
+        let r = DataCell::Record(Vector::new(NOP_ALLOCATOR.to_ref()), &[]);
+        let mut s = StdString::new();
+        write!(s, "{}", r).unwrap();
+        assert_eq!(s, "{}");
     }
 
     #[test]
