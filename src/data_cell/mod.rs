@@ -16,6 +16,7 @@ pub enum DataCell<'a> {
     Identifier(String<'a>),
     ByteVector(Vector<'a, u8>),
     CellVector(Vector<'a, Self>),
+    Record(Vector<'a, Self>, &'static [&'static str]),
 }
 
 impl<'a> DataCell<'a> {
@@ -29,6 +30,7 @@ impl<'a> DataCell<'a> {
             DataCell::Identifier(_) => "identifier",
             DataCell::ByteVector(_) => "byte_vector",
             DataCell::CellVector(_) => "cell_vector",
+            DataCell::Record(_, _) => "record",
         }
     }
 }
@@ -64,6 +66,17 @@ impl Display for DataCell<'_> {
                 write!(f, "[")?;
                 Display::fmt(v, f)?;
                 write!(f, "]")
+            }
+            DataCell::Record(values, keys) => {
+                let mut key_iter = keys.iter();
+                let mut sep = "{ ";
+                for v in values.as_slice().iter() {
+                    let k = key_iter.next().unwrap_or(&"_");
+                    write!(f, "{}{}: ", sep, k)?;
+                    sep = ", ";
+                    Display::fmt(v, f)?;
+                }
+                write!(f, " }}")
             }
         }
     }
@@ -126,6 +139,11 @@ mod tests {
     #[test]
     fn cell_vector_type_name() {
         assert_eq!(DataCell::CellVector(Vector::new(NOP_ALLOCATOR.to_ref())).type_name(), "cell_vector");
+    }
+
+    #[test]
+    fn record_type_name() {
+        assert_eq!(DataCell::Record(Vector::new(NOP_ALLOCATOR.to_ref()), &[]).type_name(), "record");
     }
 
     #[test]
@@ -221,6 +239,34 @@ mod tests {
         let mut s = StdString::new();
         write!(s, "{}", v).unwrap();
         assert_eq!(s, "[, true, 291, -111, \"hello\", body, b\"bin\", []]");
+    }
+
+    #[test]
+    fn record_fmt() {
+        let values = [
+            DataCell::Nothing,
+            DataCell::Bool(true),
+            DataCell::U64(0x123),
+            DataCell::I64(-111),
+            DataCell::String(String::map_str("hello")),
+            DataCell::Identifier(String::map_str("body")),
+            DataCell::ByteVector(Vector::map_slice(b"bin")),
+            DataCell::CellVector(Vector::new(NOP_ALLOCATOR.to_ref())),
+        ];
+        const KEYS: &'static [&'static str] = &[
+            "bumper",
+            "is_absurd",
+            "absurdity_level",
+            "highest_score",
+            "end_greeting",
+            "tag",
+            "raw_data",
+            //"shopping_list",
+        ];
+        let v = DataCell::Record(Vector::map_slice(&values), &KEYS);
+        let mut s = StdString::new();
+        write!(s, "{}", v).unwrap();
+        assert_eq!(s, "{ bumper: , is_absurd: true, absurdity_level: 291, highest_score: -111, end_greeting: \"hello\", tag: body, raw_data: b\"bin\", _: [] }");
     }
 }
 
