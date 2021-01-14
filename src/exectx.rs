@@ -265,5 +265,16 @@ mod tests {
         assert_eq!(s.as_str(), "this is the meaning of the universe: 42");
     }
 
+    #[test]
+    fn obtain_vector() {
+        let mut buf = [0_u8; 0x100];
+        let a = BumpAllocator::new(&mut buf);
+        let mut log = NullStream::new();
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
+        let mut x = xc.vector::<u16>();
+        x.push(0x1234_u16).unwrap();
+        assert_eq!(x.len(), 1);
+    }
+
 
 }
