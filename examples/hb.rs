@@ -195,6 +195,16 @@ fn identify_top_of_file_records<'a, 'x>(
         ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
     } else if tof.starts_with(b"ZM") {
         ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
+    } else if tof.starts_with(b"\x1F\x8B") {
+        ids.push(DataCell::Identifier(HbString::map_str("gzip")))?;
+    } else if tof.starts_with(b"BZ") {
+        ids.push(DataCell::Identifier(HbString::map_str("bzip2")))?;
+    } else if tof.starts_with(b"\xFD7zXZ\x00") {
+        ids.push(DataCell::Identifier(HbString::map_str("xz")))?;
+    } else if tof.starts_with(b"!<arch>\n") {
+        ids.push(DataCell::Identifier(HbString::map_str("ar")))?;
+    } else if tof.starts_with(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1") {
+        ids.push(DataCell::Identifier(HbString::map_str("ms_cfb")))?;
     } else if tof.starts_with(b"QFI\xFB") {
         ids.push(DataCell::Identifier(HbString::map_str("qcow")))?;
         if tof_len >= 8 {
@@ -216,7 +226,48 @@ fn elf_header<'a, 'x>(
     let mut magic = [0_u8; 4];
     item.stream.seek_read(0, &mut magic, xc)?;
     eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &magic)?))?;
-    Ok(DataCell::Record(eh, &["magic"]))
+    let ei_class = item.stream.read_u8(xc)?;
+    eh.push(match ei_class {
+        0 => DataCell::Identifier(HbString::map_str("ELFCLASSNONE")),
+        1 => DataCell::Identifier(HbString::map_str("ELFCLASS32")),
+        2 => DataCell::Identifier(HbString::map_str("ELFCLASS64")),
+        _ => DataCell::U64(ei_class.into()),
+    })?;
+    let ei_data = item.stream.read_u8(xc)?;
+    eh.push(match ei_data {
+        0 => DataCell::Identifier(HbString::map_str("ELFDATANONE")),
+        1 => DataCell::Identifier(HbString::map_str("ELFDATA2LSB")),
+        2 => DataCell::Identifier(HbString::map_str("ELFDATA2MSB")),
+        _ => DataCell::U64(ei_data.into()),
+    })?;
+    let ei_version = item.stream.read_u8(xc)?;
+    eh.push(match ei_version {
+        0 => DataCell::Identifier(HbString::map_str("EV_NONE")),
+        1 => DataCell::Identifier(HbString::map_str("EV_CURRENT")),
+        _ => DataCell::U64(ei_version.into()),
+    })?;
+    let ei_osabi = item.stream.read_u8(xc)?;
+    eh.push(match ei_osabi {
+        0 => DataCell::Identifier(HbString::map_str("ELFOSABI_NONE")),
+        1 => DataCell::Identifier(HbString::map_str("ELFOSABI_HPUX")),
+        2 => DataCell::Identifier(HbString::map_str("ELFOSABI_NETBSD")),
+        3 => DataCell::Identifier(HbString::map_str("ELFOSABI_LINUX")),
+        6 => DataCell::Identifier(HbString::map_str("ELFOSABI_SOLARIS")),
+        7 => DataCell::Identifier(HbString::map_str("ELFOSABI_AIX")),
+        8 => DataCell::Identifier(HbString::map_str("ELFOSABI_IRIX")),
+        9 => DataCell::Identifier(HbString::map_str("ELFOSABI_FREEBSD")),
+        10 => DataCell::Identifier(HbString::map_str("ELFOSABI_TRU64")),
+        11 => DataCell::Identifier(HbString::map_str("ELFOSABI_MODESTO")),
+        12 => DataCell::Identifier(HbString::map_str("ELFOSABI_OPENBSD")),
+        13 => DataCell::Identifier(HbString::map_str("ELFOSABI_OPENVMS")),
+        14 => DataCell::Identifier(HbString::map_str("ELFOSABI_NSK")),
+        _ => DataCell::U64(ei_osabi.into()),
+    })?;
+    eh.push(DataCell::U64(item.stream.read_u8(xc)?.into()))?;
+    let mut ei_pad = [0_u8; 7];
+    item.stream.read_uninterrupted(&mut ei_pad, xc)?;
+    eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &ei_pad)?))?;
+    Ok(DataCell::Record(eh, &["ei_magic", "ei_class", "ei_data", "ei_version", "ei_osabi", "ei_abiversion", "ei_pad"]))
 }
 
 fn process_item_attribute<'a, 'x>(
