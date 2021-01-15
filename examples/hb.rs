@@ -15,6 +15,7 @@ use halfbit::mm::String as HbString;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
 use halfbit::io::IOPartialError;
+use halfbit::io::IOPartialResult;
 use halfbit::io::stream::RandomAccessRead;
 use halfbit::io::stream::SeekFrom;
 use halfbit::conv::int_be_decode;
@@ -218,6 +219,20 @@ fn identify_top_of_file_records<'a, 'x>(
     Ok(DataCell::CellVector(ids))
 }
 
+pub const ELFCLASSNONE: u8 = 0;
+pub const ELFCLASS32: u8 = 1;
+pub const ELFCLASS64: u8 = 2;
+
+pub const ELFDATANONE: u8 = 0;
+pub const ELFDATA2LSB: u8 = 1;
+pub const ELFDATA2MSB: u8 = 2;
+
+const ELF_HEADER_FIELDS: &[&'static str] = &[
+    "ei_magic", "ei_class", "ei_data", "ei_version",
+    "ei_osabi", "ei_abiversion", "ei_pad",
+    "e_type", "e_machine", "e_version", "e_entry", "e_phoff", "e_shoff",
+];
+
 fn elf_header<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
@@ -265,9 +280,68 @@ fn elf_header<'a, 'x>(
     })?;
     eh.push(DataCell::U64(item.stream.read_u8(xc)?.into()))?;
     let mut ei_pad = [0_u8; 7];
-    item.stream.read_uninterrupted(&mut ei_pad, xc)?;
+    item.stream.read_exact(&mut ei_pad, xc)?;
     eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &ei_pad)?))?;
-    Ok(DataCell::Record(eh, &["ei_magic", "ei_class", "ei_data", "ei_version", "ei_osabi", "ei_abiversion", "ei_pad"]))
+
+    fn read_u16le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        r.read_u16le(xc).map(|v| v as u64)
+    }
+    fn read_u16be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        r.read_u16be(xc).map(|v| v as u64)
+    }
+    fn read_u32le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        r.read_u32le(xc).map(|v| v as u64)
+    }
+    fn read_u32be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        r.read_u32be(xc).map(|v| v as u64)
+    }
+    fn read_u64le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        r.read_u64le(xc).map(|v| v as u64)
+    }
+    fn read_u64be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        r.read_u64be(xc).map(|v| v as u64)
+    }
+    let read_half: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+    let read_word: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+    let read_addr: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+    let read_off: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+    if ei_data == ELFDATA2LSB && ei_class == ELFCLASS32 {
+        read_half = &read_u16le_as_u64;
+        read_word = &read_u32le_as_u64;
+        read_addr = &read_u32le_as_u64;
+        read_off = &read_u32le_as_u64;
+    } else if ei_data == ELFDATA2MSB && ei_class == ELFCLASS32 {
+        read_half = &read_u16be_as_u64;
+        read_word = &read_u32be_as_u64;
+        read_addr = &read_u32be_as_u64;
+        read_off = &read_u32be_as_u64;
+    } else if ei_data == ELFDATA2LSB && ei_class == ELFCLASS64 {
+        read_half = &read_u16le_as_u64;
+        read_word = &read_u32le_as_u64;
+        read_addr = &read_u64le_as_u64;
+        read_off = &read_u64le_as_u64;
+    } else if ei_data == ELFDATA2MSB && ei_class == ELFCLASS64 {
+        read_half = &read_u16be_as_u64;
+        read_word = &read_u32be_as_u64;
+        read_addr = &read_u64be_as_u64;
+        read_off = &read_u64be_as_u64;
+    } else {
+        return Ok(DataCell::Record(eh, ELF_HEADER_FIELDS));
+    }
+    let e_type = read_half(item.stream, xc)?;
+    let e_machine = read_half(item.stream, xc)?;
+    let e_version = read_word(item.stream, xc)?;
+    let e_entry = read_addr(item.stream, xc)?;
+    let e_phoff = read_off(item.stream, xc)?;
+    let e_shoff = read_off(item.stream, xc)?;
+    eh.push(DataCell::U64(e_type))?;
+    eh.push(DataCell::U64(e_machine))?;
+    eh.push(DataCell::U64(e_version))?;
+    eh.push(DataCell::U64(e_entry))?;
+    eh.push(DataCell::U64(e_phoff))?;
+    eh.push(DataCell::U64(e_shoff))?;
+
+    Ok(DataCell::Record(eh, ELF_HEADER_FIELDS))
 }
 
 fn process_item_attribute<'a, 'x>(
