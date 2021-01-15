@@ -2,14 +2,17 @@ use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
 use core::cell::UnsafeCell;
 
+use crate::exectx::ExecutionContext;
+use crate::xc_err;
+use crate::conv::int_be_decode;
+use crate::conv::int_le_decode;
+use crate::num::PrimitiveInt;
+
 use super::ErrorCode;
 use super::IOError;
 use super::IOPartialError;
 use super::IOResult;
 use super::IOPartialResult;
-use crate::exectx::ExecutionContext;
-use crate::xc_err;
-use crate::conv::int_be_decode;
 
 pub enum SeekFrom {
     Start(u64),
@@ -95,6 +98,14 @@ pub trait Read {
         self.read_exact(&mut buf, exe_ctx).map(|_| buf[0])
     }
 
+    fn read_u16be<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u16> {
+        let mut buf = [0_u8; 2];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
+    }
+
     fn read_u32be<'a>(
         &mut self,
         exe_ctx: &mut ExecutionContext<'a>,
@@ -102,6 +113,95 @@ pub trait Read {
         let mut buf = [0_u8; 4];
         self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
     }
+
+    fn read_u64be<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u64> {
+        let mut buf = [0_u8; 8];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
+    }
+
+    fn read_u16le<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u16> {
+        let mut buf = [0_u8; 2];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_le_decode(&buf).unwrap())
+    }
+
+    fn read_u32le<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u32> {
+        let mut buf = [0_u8; 4];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_le_decode(&buf).unwrap())
+    }
+
+    fn read_u64le<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u64> {
+        let mut buf = [0_u8; 8];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_le_decode(&buf).unwrap())
+    }
+
+    fn read_i8<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, i8> {
+        let mut buf = [0_u8; 1];
+        self.read_exact(&mut buf, exe_ctx).map(|_| i8::reinterpret_u8(buf[0]))
+    }
+
+    fn read_i16be<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, i16> {
+        let mut buf = [0_u8; 2];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
+    }
+
+    fn read_i32be<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, i32> {
+        let mut buf = [0_u8; 4];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
+    }
+
+    fn read_i64be<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u64> {
+        let mut buf = [0_u8; 8];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
+    }
+
+    fn read_i16le<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, i16> {
+        let mut buf = [0_u8; 2];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_le_decode(&buf).unwrap())
+    }
+
+    fn read_i32le<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, i32> {
+        let mut buf = [0_u8; 4];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_le_decode(&buf).unwrap())
+    }
+
+    fn read_i64le<'a>(
+        &mut self,
+        exe_ctx: &mut ExecutionContext<'a>,
+    ) -> IOPartialResult<'a, u64> {
+        let mut buf = [0_u8; 8];
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_le_decode(&buf).unwrap())
+    }
+
 }
 
 pub trait Write {
@@ -389,6 +489,125 @@ mod tests {
             (ErrorCode::UnsupportedOperation, 0));
     }
 
+
+    #[test]
+    fn read_i8_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"\xFE");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i8(&mut xc).unwrap(), -2);
+    }
+
+    #[test]
+    fn read_i16be_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"AB");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i16be(&mut xc).unwrap(), 0x4142);
+    }
+
+    #[test]
+    fn read_i16be_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"A");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_i16be(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 1));
+    }
+
+    #[test]
+    fn read_i32be_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCD");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i32be(&mut xc).unwrap(), 0x41424344);
+    }
+
+    #[test]
+    fn read_i32be_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABC");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_i32be(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 3));
+    }
+
+    #[test]
+    fn read_i64be_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFGH");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i64be(&mut xc).unwrap(), 0x4142434445464748);
+    }
+
+    #[test]
+    fn read_i64be_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFG");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_i64be(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 7));
+    }
+
+
+    #[test]
+    fn read_i16le_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"AB");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i16le(&mut xc).unwrap(), 0x4241);
+    }
+
+    #[test]
+    fn read_i16le_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"A");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_i16le(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 1));
+    }
+
+    #[test]
+    fn read_i32le_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCD");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i32le(&mut xc).unwrap(), 0x44434241);
+    }
+
+    #[test]
+    fn read_i32le_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABC");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_i32le(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 3));
+    }
+
+    #[test]
+    fn read_i64le_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFGH");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_i64le(&mut xc).unwrap(), 0x4847464544434241);
+    }
+
+    #[test]
+    fn read_i64le_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFG");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_i64le(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 7));
+    }
+
+
+
+
+
+
+    #[test]
+    fn read_u16be_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"AB");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_u16be(&mut xc).unwrap(), 0x4142);
+    }
+
+    #[test]
+    fn read_u16be_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"A");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u16be(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 1));
+    }
+
     #[test]
     fn read_u32be_successful() {
         let mut stream = BufferAsOnePassROStream::new(b"ABCD");
@@ -410,6 +629,75 @@ mod tests {
         let mut xc = ExecutionContext::nop();
         assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),
             (ErrorCode::UnsupportedOperation, 0));
+    }
+
+    #[test]
+    fn read_u64be_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFGH");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_u64be(&mut xc).unwrap(), 0x4142434445464748);
+    }
+
+    #[test]
+    fn read_u64be_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFG");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u64be(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 7));
+    }
+
+
+    #[test]
+    fn read_u16le_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"AB");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_u16le(&mut xc).unwrap(), 0x4241);
+    }
+
+    #[test]
+    fn read_u16le_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"A");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u16le(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 1));
+    }
+
+    #[test]
+    fn read_u32le_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCD");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_u32le(&mut xc).unwrap(), 0x44434241);
+    }
+
+    #[test]
+    fn read_u32le_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABC");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u32le(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 3));
+    }
+
+    #[test]
+    fn read_u32le_when_read_returns_error() {
+        let mut stream = DefaultStream { };
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u8(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnsupportedOperation, 0));
+    }
+
+    #[test]
+    fn read_u64le_successful() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFGH");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(stream.read_u64le(&mut xc).unwrap(), 0x4847464544434241);
+    }
+
+    #[test]
+    fn read_u64le_truncated() {
+        let mut stream = BufferAsOnePassROStream::new(b"ABCDEFG");
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*stream.read_u64le(&mut xc).unwrap_err().get_data(),
+            (ErrorCode::UnexpectedEnd, 7));
     }
 
     struct IntermittentReader(u64, u8);
