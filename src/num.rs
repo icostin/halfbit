@@ -1,11 +1,99 @@
-extern crate num;
 use core::ptr::NonNull;
 
-pub fn is_power_of_2<T> (n: T) -> bool
-where T: num::traits::Unsigned + num::traits::int::PrimInt {
-    let zero: T = num::zero();
-    let one: T = num::One::one();
-    n != zero && (n & (n - one)) == zero
+pub trait PrimitiveInt:
+    Copy +
+    core::ops::Shl<u8, Output = Self> +
+    core::ops::BitAnd<Output = Self> +
+    core::ops::BitOr<Output = Self> +
+    core::cmp::Eq +
+    core::ops::Sub<Output = Self> +
+    Sized {
+    const SIZE: usize;
+    const ZERO: Self;
+    const ONE: Self;
+    fn reinterpret_u8(v: u8) -> Self;
+}
+
+pub trait PrimitiveUInt: PrimitiveInt {}
+
+impl PrimitiveInt for u8 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v }
+}
+impl PrimitiveUInt for u8 {}
+
+impl PrimitiveInt for u16 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+impl PrimitiveUInt for u16 {}
+
+impl PrimitiveInt for u32 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+impl PrimitiveUInt for u32 {}
+
+impl PrimitiveInt for u64 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+impl PrimitiveUInt for u64 {}
+
+impl PrimitiveInt for usize {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+impl PrimitiveUInt for usize {}
+
+impl PrimitiveInt for i8 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+
+impl PrimitiveInt for i16 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+
+impl PrimitiveInt for i32 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+
+impl PrimitiveInt for i64 {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+
+impl PrimitiveInt for isize {
+    const SIZE: usize = core::mem::size_of::<Self>();
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    fn reinterpret_u8(v: u8) -> Self { v as Self }
+}
+
+
+pub fn is_power_of_2<T: PrimitiveUInt> (n: T) -> bool {
+    n != T::ZERO && (n & (n - T::ONE)) == T::ZERO
 }
 
 pub use core::num::NonZeroUsize;
@@ -193,5 +281,16 @@ mod tests {
     fn rmask_1() {
         assert_eq!(Pow2Usize::one().rmask(), 0);
     }
+
+    #[test] fn u8_reinterpret_u8() { assert_eq!(u8::reinterpret_u8(0xAB), 0xAB_u8); }
+    #[test] fn i8_reinterpret_u8() { assert_eq!(i8::reinterpret_u8(0x80), -0x80_i8); }
+    #[test] fn u16_reinterpret_u8() { assert_eq!(u16::reinterpret_u8(0xAB), 0xAB_u16); }
+    #[test] fn i16_reinterpret_u8() { assert_eq!(i16::reinterpret_u8(0x80), 0x80_i16); }
+    #[test] fn u32_reinterpret_u8() { assert_eq!(u32::reinterpret_u8(0xAB), 0xAB_u32); }
+    #[test] fn i32_reinterpret_u8() { assert_eq!(i32::reinterpret_u8(0x80), 0x80_i32); }
+    #[test] fn u64_reinterpret_u8() { assert_eq!(u64::reinterpret_u8(0xAB), 0xAB_u64); }
+    #[test] fn i64_reinterpret_u8() { assert_eq!(i64::reinterpret_u8(0x80), 0x80_i64); }
+    #[test] fn usize_reinterpret_u8() { assert_eq!(usize::reinterpret_u8(0xAB), 0xAB_usize); }
+    #[test] fn isize_reinterpret_u8() { assert_eq!(isize::reinterpret_u8(0x80), 0x80_isize); }
 }
 

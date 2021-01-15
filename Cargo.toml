@@ -15,7 +15,6 @@ use-libc = ["libc"]
 use-std = []
 
 [dependencies]
-num = ">= 0.1"
 libc = { version = "0.2", optional = true }
 
 [dev-dependencies]

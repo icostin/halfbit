@@ -1,6 +1,7 @@
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
 use core::cell::UnsafeCell;
+
 use super::ErrorCode;
 use super::IOError;
 use super::IOPartialError;
@@ -8,7 +9,7 @@ use super::IOResult;
 use super::IOPartialResult;
 use crate::exectx::ExecutionContext;
 use crate::xc_err;
-use crate::conv::uint_be_decode;
+use crate::conv::int_be_decode;
 
 pub enum SeekFrom {
     Start(u64),
@@ -91,16 +92,15 @@ pub trait Read {
         exe_ctx: &mut ExecutionContext<'a>,
     ) -> IOPartialResult<'a, u8> {
         let mut buf = [0_u8; 1];
-        self.read_exact(&mut buf, exe_ctx)
-        .map(|_| buf[0])
-     }
+        self.read_exact(&mut buf, exe_ctx).map(|_| buf[0])
+    }
 
     fn read_u32be<'a>(
         &mut self,
         exe_ctx: &mut ExecutionContext<'a>,
     ) -> IOPartialResult<'a, u32> {
         let mut buf = [0_u8; 4];
-        self.read_exact(&mut buf, exe_ctx).map(|_| uint_be_decode(&buf).unwrap())
+        self.read_exact(&mut buf, exe_ctx).map(|_| int_be_decode(&buf).unwrap())
     }
 }
 
