@@ -19,8 +19,12 @@ pub enum DataCell<'a> {
     Record(Vector<'a, Self>, &'static [&'static str]),
 }
 
-impl<'a> DataCell<'a> {
-    pub fn type_name(&self) -> &'static str {
+pub trait DataCellOps: Display + UpperHex {
+    fn type_name(&self) -> &'static str;
+}
+
+impl<'a> DataCellOps for DataCell<'a> {
+    fn type_name(&self) -> &'static str {
         match self {
             DataCell::Nothing => "nothing",
             DataCell::Bool(_) => "bool",
