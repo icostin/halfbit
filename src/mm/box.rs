@@ -168,17 +168,20 @@ mod tests {
 
     trait TestDynBoxTrait {
         fn tada(&self) -> u8;
+        fn inc(&mut self);
     }
 
     #[derive(Debug)]
     struct TestDynBoxA(u8);
     impl TestDynBoxTrait for TestDynBoxA {
         fn tada(&self) -> u8 { self.0 }
+        fn inc(&mut self) { self.0 += 1 }
     }
     #[derive(Debug)]
     struct TestDynBoxB<'a>(&'a mut usize);
     impl<'a> TestDynBoxTrait for TestDynBoxB<'a> {
         fn tada(&self) -> u8 { 0xAB }
+        fn inc(&mut self) {}
     }
     impl<'a> Drop for TestDynBoxB<'a> {
         fn drop(&mut self) {
@@ -203,10 +206,12 @@ mod tests {
         assert_eq!(a.tada(), 0x5A);
         assert_eq!(b.tada(), 0xAB);
         {
-            let tb = TestDynBox::from_box(b);
-            let ta = TestDynBox::from_box(a);
+            let mut tb = TestDynBox::from_box(b);
+            let mut ta = TestDynBox::from_box(a);
+            ta.inc();
+            tb.inc();
             assert_eq!(tb.tada(), 0xAB);
-            assert_eq!(ta.tada(), 0x5A);
+            assert_eq!(ta.tada(), 0x5B);
         }
         assert_eq!(drop_count, 1);
         assert_eq!(ba.space_left(), 256);

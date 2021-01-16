@@ -283,9 +283,9 @@ mod tests {
             "raw_data",
             //"shopping_list",
         ];
-        let v = DataCell::Record(Vector::map_slice(&values), &KEYS);
+        let mut v = DataCell::Record(Vector::map_slice(&values), &KEYS);
         let mut s = StdString::new();
-        write!(s, "{}", v).unwrap();
+        v.to_text(&mut s).unwrap();
         assert_eq!(s, "{ bumper: , is_absurd: true, absurdity_level: 291, highest_score: -111, end_greeting: \"hello\", tag: body, raw_data: b\"bin\", _: [] }");
     }
 }
