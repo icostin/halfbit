@@ -43,6 +43,12 @@ impl<'a> BumpAllocator<'a> {
         };
         state.current_addr == (ptr.as_ptr() as usize) + size.get()
     }
+    pub fn space_left(&self) -> usize {
+        let state: &'a BumpAllocatorState<'a> = unsafe {
+            &*(self.state.get() as *mut BumpAllocatorState<'a>)
+        };
+        state.end_addr - state.current_addr
+    }
 }
 
 unsafe impl<'a> Allocator for BumpAllocator<'a> {

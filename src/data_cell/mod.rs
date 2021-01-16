@@ -2,9 +2,18 @@ use core::fmt::Debug;
 use core::fmt::Display;
 use core::fmt::UpperHex;
 use core::fmt::Formatter;
+use core::fmt::Write as FmtWrite;
+use core::fmt::Result as FmtResult;
 
 use crate::mm::Vector;
 use crate::mm::String;
+
+pub trait DataCellOps: Debug + Display + UpperHex {
+    fn type_name(&self) -> &'static str;
+    fn to_text<T: FmtWrite>(&mut self, w: &mut T) -> FmtResult {
+        write!(w, "{}", self)
+    }
+}
 
 #[derive(Debug)]
 pub enum DataCell<'a> {
@@ -17,10 +26,6 @@ pub enum DataCell<'a> {
     ByteVector(Vector<'a, u8>),
     CellVector(Vector<'a, Self>),
     Record(Vector<'a, Self>, &'static [&'static str]),
-}
-
-pub trait DataCellOps: Display + UpperHex {
-    fn type_name(&self) -> &'static str;
 }
 
 impl<'a> DataCellOps for DataCell<'a> {
@@ -70,7 +75,7 @@ impl Display for DataCell<'_> {
                 write!(f, "[")?;
                 Display::fmt(v, f)?;
                 write!(f, "]")
-            }
+            },
             DataCell::Record(values, keys) => {
                 if values.is_empty() {
                     return write!(f, "{{}}")
@@ -84,7 +89,7 @@ impl Display for DataCell<'_> {
                     Display::fmt(v, f)?;
                 }
                 write!(f, " }}")
-            }
+            },
         }
     }
 }

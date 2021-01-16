@@ -34,6 +34,10 @@ impl<'a, T> Box<'a, T> {
             Err(e) => Err((e, value))
         }
     }
+    pub unsafe fn to_parts(self) -> (AllocatorRef<'a>, NonNull<T>) {
+        let x = core::mem::ManuallyDrop::new(self);
+        (x.allocator, x.ptr)
+    }
 }
 
 impl<'a, T> Drop for Box<'a, T> {
@@ -57,6 +61,49 @@ impl<'a, T> core::ops::Deref for Box<'a, T> {
 impl<'a, T> core::ops::DerefMut for Box<'a, T> {
     fn deref_mut (&mut self) -> &mut Self::Target {
         unsafe { self.ptr.as_mut() }
+    }
+}
+
+#[macro_export]
+macro_rules! dyn_box {
+    ( $box_type: ident, $trait: ident ) => {
+        struct $box_type<'a> {
+            allocator: AllocatorRef<'a>,
+            ptr: NonNull<dyn $trait + 'a>,
+        }
+        impl<'a> $box_type<'a> {
+            pub fn from_box<T: 'a + $trait>(b: Box<'a, T>) -> Self {
+                let (allocator, ptr) = unsafe { b.to_parts() };
+                Self {
+                    allocator,
+                    ptr
+                }
+            }
+        }
+        impl<'a> core::ops::Deref for $box_type<'a> {
+            type Target = dyn $trait + 'a;
+            fn deref(&self) -> &Self::Target {
+                unsafe { self.ptr.as_ref() }
+            }
+        }
+        impl<'a> core::ops::DerefMut for $box_type<'a> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                unsafe { self.ptr.as_mut() }
+            }
+        }
+        impl<'a> Drop for $box_type<'a> {
+            fn drop(&mut self) {
+                unsafe {
+                    core::ptr::drop_in_place(self.ptr.as_ptr());
+                    let obj_vtable_ptr = &self.ptr as *const NonNull<dyn $trait + 'a> as *const usize;
+                    let vtable = (*obj_vtable_ptr.offset(1) as *const usize);
+                    let (size, align) = (*vtable.offset(1), *vtable.offset(2));
+                    self.allocator.free(self.ptr.cast::<u8>(),
+                                        NonZeroUsize::new(size).unwrap(),
+                                        Pow2Usize::new(align).unwrap());
+                }
+            }
+        }
     }
 }
 
@@ -118,5 +165,53 @@ mod tests {
         }
         assert_eq!(drop_count.load(Ordering::SeqCst), 1);
     }
+
+    trait TestDynBoxTrait {
+        fn tada(&self) -> u8;
+    }
+
+    #[derive(Debug)]
+    struct TestDynBoxA(u8);
+    impl TestDynBoxTrait for TestDynBoxA {
+        fn tada(&self) -> u8 { self.0 }
+    }
+    #[derive(Debug)]
+    struct TestDynBoxB<'a>(&'a mut usize);
+    impl<'a> TestDynBoxTrait for TestDynBoxB<'a> {
+        fn tada(&self) -> u8 { 0xAB }
+    }
+    impl<'a> Drop for TestDynBoxB<'a> {
+        fn drop(&mut self) {
+            *self.0 += 1;
+        }
+    }
+
+    dyn_box!(TestDynBox, TestDynBoxTrait);
+
+    #[test]
+    fn dyn_box_ab() {
+        use crate::mm::bump_alloc::BumpAllocator;
+        let mut buf = [0_u8; 256];
+        let ba = BumpAllocator::new(&mut buf);
+        assert_eq!(ba.space_left(), 256);
+        let mut drop_count = 0_usize;
+        extern crate std;
+        use std::dbg;
+        dbg!(ba.space_left());
+        let b = Box::new(ba.to_ref(), TestDynBoxB(&mut drop_count)).unwrap();
+        let a = Box::new(ba.to_ref(), TestDynBoxA(0x5A)).unwrap();
+        assert_eq!(a.tada(), 0x5A);
+        assert_eq!(b.tada(), 0xAB);
+        {
+            let tb = TestDynBox::from_box(b);
+            let ta = TestDynBox::from_box(a);
+            assert_eq!(tb.tada(), 0xAB);
+            assert_eq!(ta.tada(), 0x5A);
+        }
+        assert_eq!(drop_count, 1);
+        assert_eq!(ba.space_left(), 256);
+    }
+
+
 
 }
