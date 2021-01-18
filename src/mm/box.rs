@@ -66,13 +66,14 @@ impl<'a, T> core::ops::DerefMut for Box<'a, T> {
 
 #[macro_export]
 macro_rules! dyn_box {
-    ( $box_type: ident, $trait: ident ) => {
-        struct $box_type<'a> {
-            allocator: AllocatorRef<'a>,
-            ptr: NonNull<dyn $trait + 'a>,
+    ( $v:vis $box_type: ident, $trait: ident ) => {
+        #[derive(Debug)]
+        $v struct $box_type<'a> {
+            allocator: $crate::mm::AllocatorRef<'a>,
+            ptr: core::ptr::NonNull<dyn $trait + 'a>,
         }
         impl<'a> $box_type<'a> {
-            pub fn from_box<T: 'a + $trait>(b: Box<'a, T>) -> Self {
+            pub fn from_box<T: 'a + $trait>(b: $crate::mm::Box<'a, T>) -> Self {
                 let (allocator, ptr) = unsafe { b.to_parts() };
                 Self {
                     allocator,
@@ -94,13 +95,14 @@ macro_rules! dyn_box {
         impl<'a> Drop for $box_type<'a> {
             fn drop(&mut self) {
                 unsafe {
+                    use $crate::mm::Allocator;
                     core::ptr::drop_in_place(self.ptr.as_ptr());
-                    let obj_vtable_ptr = &self.ptr as *const NonNull<dyn $trait + 'a> as *const usize;
+                    let obj_vtable_ptr = &self.ptr as *const core::ptr::NonNull<dyn $trait + 'a> as *const usize;
                     let vtable = (*obj_vtable_ptr.offset(1) as *const usize);
                     let (size, align) = (*vtable.offset(1), *vtable.offset(2));
                     self.allocator.free(self.ptr.cast::<u8>(),
-                                        NonZeroUsize::new(size).unwrap(),
-                                        Pow2Usize::new(align).unwrap());
+                                        core::num::NonZeroUsize::new(size).unwrap(),
+                                        $crate::num::Pow2Usize::new(align).unwrap());
                 }
             }
         }
@@ -212,6 +214,12 @@ mod tests {
             tb.inc();
             assert_eq!(tb.tada(), 0xAB);
             assert_eq!(ta.tada(), 0x5B);
+            extern crate std;
+            use std::string::String as StdString;
+            use core::fmt::Write;
+            let mut s = StdString::new();
+            write!(s, "{:?}", ta).unwrap();
+            assert!(s.contains("TestDynBox"));
         }
         assert_eq!(drop_count, 1);
         assert_eq!(ba.space_left(), 256);

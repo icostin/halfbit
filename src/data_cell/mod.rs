@@ -4,16 +4,25 @@ use core::fmt::UpperHex;
 use core::fmt::Formatter;
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
+use core::ops::Deref;
 
 use crate::mm::Vector;
 use crate::mm::String;
+use crate::dyn_box;
 
 pub trait DataCellOps: Debug + Display + UpperHex {
     fn type_name(&self) -> &'static str;
+}
+
+pub trait DataCellOpsExtra: DataCellOps {
     fn to_text<T: FmtWrite>(&mut self, w: &mut T) -> FmtResult {
         write!(w, "{}", self)
     }
 }
+
+impl<T: DataCellOps> DataCellOpsExtra for T {}
+
+dyn_box!(pub DynDataCell, DataCellOps);
 
 #[derive(Debug)]
 pub enum DataCell<'a> {
@@ -26,6 +35,7 @@ pub enum DataCell<'a> {
     ByteVector(Vector<'a, u8>),
     CellVector(Vector<'a, Self>),
     Record(Vector<'a, Self>, &'static [&'static str]),
+    Dyn(DynDataCell<'a>),
 }
 
 impl<'a> DataCellOps for DataCell<'a> {
@@ -40,6 +50,7 @@ impl<'a> DataCellOps for DataCell<'a> {
             DataCell::ByteVector(_) => "byte_vector",
             DataCell::CellVector(_) => "cell_vector",
             DataCell::Record(_, _) => "record",
+            DataCell::Dyn(_) => "dyn",
         }
     }
 }
@@ -90,6 +101,9 @@ impl Display for DataCell<'_> {
                 }
                 write!(f, " }}")
             },
+            DataCell::Dyn(v) => {
+                Display::fmt(v.deref(), f)
+            },
         }
     }
 }
@@ -99,6 +113,7 @@ impl UpperHex for DataCell<'_> {
         match self {
             DataCell::U64(v) => UpperHex::fmt(v, f),
             DataCell::I64(v) => UpperHex::fmt(v, f),
+            DataCell::Dyn(v) => UpperHex::fmt(v.deref(), f),
             _ => Display::fmt(self, f)
         }
     }
@@ -156,6 +171,16 @@ mod tests {
     #[test]
     fn record_type_name() {
         assert_eq!(DataCell::Record(Vector::new(NOP_ALLOCATOR.to_ref()), &[]).type_name(), "record");
+    }
+
+    #[test]
+    fn dyn_type_name() {
+        use crate::mm::Box;
+        use crate::mm::SingleAlloc;
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let boxed_cell = Box::new(a.to_ref(), DataCell::U64(0x1234)).unwrap();
+        assert_eq!(DataCell::Dyn(DynDataCell::from_box(boxed_cell)).type_name(), "dyn");
     }
 
     #[test]
@@ -287,6 +312,22 @@ mod tests {
         let mut s = StdString::new();
         v.to_text(&mut s).unwrap();
         assert_eq!(s, "{ bumper: , is_absurd: true, absurdity_level: 291, highest_score: -111, end_greeting: \"hello\", tag: body, raw_data: b\"bin\", _: [] }");
+    }
+
+    #[test]
+    fn dyn_fmt() {
+        use crate::mm::Box;
+        use crate::mm::SingleAlloc;
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let boxed_cell = Box::new(a.to_ref(), DataCell::U64(0x1001)).unwrap();
+        let mut dyn_cell = DataCell::Dyn(DynDataCell::from_box(boxed_cell));
+        let mut s = StdString::new();
+        dyn_cell.to_text(&mut s).unwrap();
+        assert_eq!(s, "4097");
+        let mut s = StdString::new();
+        write!(s, "{:05X}", dyn_cell).unwrap();
+        assert_eq!(s, "01001");
     }
 }
 

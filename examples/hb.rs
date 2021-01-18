@@ -123,10 +123,9 @@ fn process_args(args: Vec<StdString>) -> Invocation {
         .arg(clap::Arg::with_name("attr")
                 .short("a")
                 .long("attr")
-                .help("computes given attributes (comma separated)")
+                .help("computes given attributes")
                 .takes_value(true)
-                .multiple(true)
-                .require_delimiter(true))
+                .multiple(true))
         .get_matches_from(args);
 
     let inv = Invocation {
