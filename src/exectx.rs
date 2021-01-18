@@ -78,7 +78,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn to_box<T: Sized>(
         &self,
         v: T
-    ) -> Result<Box<'_, T>, (AllocError, T)> {
+    ) -> Result<Box<'a, T>, (AllocError, T)> {
         self.get_main_allocator().alloc_item(v)
     }
 

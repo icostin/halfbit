@@ -2,7 +2,7 @@ use crate::mm::String;
 use core::fmt::Debug;
 use core::fmt::Display;
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Error<'a, T>
 where T: Sized + Debug {
     data: T,

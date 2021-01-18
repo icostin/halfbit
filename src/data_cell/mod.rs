@@ -12,8 +12,9 @@ use crate::mm::String;
 use crate::io::IOError;
 use crate::io::IOPartialError;
 use crate::dyn_box;
+use crate::ExecutionContext;
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum AttrComputeError<'a> {
     UnknownAttribute,
     NotApplicable,
@@ -50,14 +51,21 @@ impl<'a> core::convert::From<AllocError> for AttrComputeError<'a> {
     }
 }
 
-impl<'a> core::convert::From<(AllocError, DataCell<'_>)> for AttrComputeError<'a> {
-    fn from(e: (AllocError, DataCell<'_>)) -> Self {
+impl<'a, E> core::convert::From<(AllocError, E)> for AttrComputeError<'a> {
+    fn from(e: (AllocError, E)) -> Self {
         AttrComputeError::Alloc(e.0)
     }
 }
 
 pub trait DataCellOps: Debug + Display + UpperHex {
     fn type_name(&self) -> &'static str;
+    fn compute_attr<'a: 'o, 'x: 'o, 'o>(
+        &'a mut self,
+        _attr_name: &str,
+        _xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>> {
+        Err(AttrComputeError::UnknownAttribute)
+    }
 }
 
 pub trait DataCellOpsExtra: DataCellOps {
@@ -96,7 +104,7 @@ impl<'a> DataCellOps for DataCell<'a> {
             DataCell::ByteVector(_) => "byte_vector",
             DataCell::CellVector(_) => "cell_vector",
             DataCell::Record(_, _) => "record",
-            DataCell::Dyn(_) => "dyn",
+            DataCell::Dyn(v) => v.type_name(),
         }
     }
 }
@@ -226,7 +234,13 @@ mod tests {
         let mut buffer = [0_u8; 256];
         let a = SingleAlloc::new(&mut buffer);
         let boxed_cell = Box::new(a.to_ref(), DataCell::U64(0x1234)).unwrap();
-        assert_eq!(DataCell::Dyn(DynDataCell::from_box(boxed_cell)).type_name(), "dyn");
+        assert_eq!(DataCell::Dyn(DynDataCell::from_box(boxed_cell)).type_name(), "uint64");
+    }
+
+    #[test]
+    fn default_compute_attr() {
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(AttrComputeError::UnknownAttribute, DataCell::Nothing.compute_attr("zilch", &mut xc).unwrap_err());
     }
 
     #[test]

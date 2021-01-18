@@ -167,6 +167,12 @@ impl<'a, T> Drop for Vector<'a, T> {
     }
 }
 
+impl<'a, T: PartialEq> PartialEq for Vector<'a, T> {
+    fn eq<'b>(&self, other: &Vector<'b, T>) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
 impl<'a, T: Display> Display for Vector<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut first = true;
@@ -353,6 +359,17 @@ mod tests {
         let mut v = Vector::from_slice(a.to_ref(), &x).unwrap();
         v.as_mut_slice()[2] = 7;
         assert_eq!(v.as_slice(), [2_u16, 4_u16, 7_u16, 8_u16 ]);
+    }
+
+    #[test]
+    fn partial_eq() {
+        let mut buffer = [0u8; 100];
+        let a = SingleAlloc::new(&mut buffer);
+        let x: [u16; 4] = [ 2, 4, 6, 8 ];
+        let mut v = Vector::from_slice(a.to_ref(), &x).unwrap();
+        v.as_mut_slice()[2] = 7;
+        let v2 = Vector::map_slice(&[2_u16, 4, 7, 8]);
+        assert_eq!(v, v2);
     }
 }
 

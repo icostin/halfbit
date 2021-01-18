@@ -1,10 +1,13 @@
 extern crate clap;
 
 use core::fmt::Write as FmtWrite;
+use core::fmt::Debug;
+use core::fmt::Formatter;
+use core::fmt::UpperHex;
+use core::fmt::Display;
 use std::string::String as StdString;
 use std::io::stderr;
 
-use halfbit::DataCell;
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
 use halfbit::mm::Allocator;
@@ -23,6 +26,10 @@ use halfbit::log_info;
 use halfbit::log_warn;
 use halfbit::log_error;
 
+use halfbit::data_cell::DataCell;
+use halfbit::data_cell::DynDataCell;
+use halfbit::data_cell::DataCellOps;
+//use halfbit::data_cell::DataCellOpsExtra;
 use halfbit::data_cell::AttrComputeError;
 
 #[derive(Debug)]
@@ -35,6 +42,43 @@ struct Invocation {
 struct Item<'a> {
     name: &'a str,
     stream: &'a mut (dyn RandomAccessRead + 'a),
+}
+struct ItemCell<'a, 'b> {
+    item: &'b mut Item<'a>
+}
+impl<'a, 'b> Debug for ItemCell<'a, 'b> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "ItemCell({:?})", self.item.name)
+    }
+}
+impl<'a, 'b> Display for ItemCell<'a, 'b> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Display::fmt("todo", f)
+    }
+}
+impl<'a, 'b> UpperHex for ItemCell<'a, 'b> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Display::fmt("todo", f)
+    }
+}
+impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
+    fn type_name(&self) -> &'static str {
+        "stream_data"
+    }
+    fn compute_attr<'c, 'x, 'o> (
+        &'c mut self,
+        attr_name: &str,
+        xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where 'c: 'o, 'x: 'o {
+        match attr_name {
+            "first_byte" => extract_first_byte(self.item, xc),
+            "first_8_bytes" => first_8_bytes(self.item, xc),
+            "tof_ids" => identify_top_of_file_records(self.item, xc),
+            "elf_header" => elf_header(self.item, xc),
+            _ => Err(AttrComputeError::UnknownAttribute)
+        }
+    }
 }
 
 struct ProcessingStatus {
@@ -301,22 +345,8 @@ fn elf_header<'a, 'x>(
     Ok(DataCell::Record(eh, ELF_HEADER_FIELDS))
 }
 
-fn process_item_attribute<'a, 'x>(
-    item: &mut Item<'a>,
-    attr: &str,
-    xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, AttrComputeError<'x>> {
-    match attr {
-        "first_byte" => extract_first_byte(item, xc),
-        "first_8_bytes" => first_8_bytes(item, xc),
-        "tof_ids" => identify_top_of_file_records(item, xc),
-        "elf_header" => elf_header(item, xc),
-        _ => Err(AttrComputeError::UnknownAttribute)
-    }
-}
-
-fn process_item<'x>(
-    item_name: &str,
+fn process_item<'a, 'x>(
+    item_name: &'a str,
     invocation: &Invocation,
     xc: &mut ExecutionContext<'x>,
 ) -> ProcessingStatus {
@@ -339,12 +369,20 @@ fn process_item<'x>(
         name: item_name,
         stream: &mut f,
     };
+    let mut root: DynDataCell = match xc.to_box(ItemCell{ item: &mut item }) {
+        Ok(b) => b.into(),
+        Err((e, cell)) => {
+            log_error!(xc, "error:{:?}:{:?}", cell.item.name, e);
+            status.attributes_failed_to_compute += invocation.attributes.len();
+            return status;
+        }
+    };
 
     for attr in &invocation.attributes {
         if invocation.verbose {
             log_info!(xc, "computing attribute {:?} for item {:?}", attr, item_name);
         }
-        match process_item_attribute(&mut item, attr, xc) {
+        match root.compute_attr(attr, xc) {
             Ok(av) => {
                 println!("{:?}\t{}\t{}", item_name, attr, av);
                 status.attributes_computed_ok += 1;
@@ -353,11 +391,11 @@ fn process_item<'x>(
                 match e {
                     AttrComputeError::NotApplicable => {
                         status.attributes_not_applicable += 1;
-                        log_warn!(xc, "warning:{:?}:{:?}:{}", item.name, attr, e);
+                        log_warn!(xc, "warning:{:?}:{:?}:{}", item_name, attr, e);
                     },
                     _ => {
                         status.attributes_failed_to_compute += 1;
-                        log_error!(xc, "error:{:?}:{:?}:{}", item.name, attr, e);
+                        log_error!(xc, "error:{:?}:{:?}:{}", item_name, attr, e);
                     }
                 }
             },

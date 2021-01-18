@@ -7,6 +7,7 @@ use core::fmt::Display as FmtDisplay;
 use core::fmt::Formatter as FmtFormatter;
 
 // UTF-8 string
+#[derive(PartialEq)]
 pub struct String<'a> {
     data: Vector<'a, u8>,
 }

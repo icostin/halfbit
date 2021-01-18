@@ -106,6 +106,11 @@ macro_rules! dyn_box {
                 }
             }
         }
+        impl<'a, T: 'a + $trait> From<$crate::mm::Box<'a, T>> for $box_type<'a> {
+            fn from(b: $crate::mm::Box<'a, T>) -> Self {
+                $box_type::from_box(b)
+            }
+        }
     }
 }
 
