@@ -13,7 +13,6 @@ use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
 use halfbit::mm::String as HbString;
 use halfbit::io::ErrorCode as IOErrorCode;
-use halfbit::io::IOError;
 use halfbit::io::IOPartialError;
 use halfbit::io::IOPartialResult;
 use halfbit::io::stream::RandomAccessRead;
@@ -24,54 +23,13 @@ use halfbit::log_info;
 use halfbit::log_warn;
 use halfbit::log_error;
 
+use halfbit::data_cell::AttrComputeError;
+
 #[derive(Debug)]
 struct Invocation {
     verbose: bool,
     items: Vec<StdString>,
     attributes: Vec<StdString>,
-}
-
-#[derive(Debug)]
-enum AttrComputeError<'a> {
-    UnknownAttribute,
-    NotApplicable,
-    Alloc(AllocError),
-    IO(IOError<'a>),
-}
-
-impl<'a> std::fmt::Display for AttrComputeError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AttrComputeError::UnknownAttribute => write!(f, "unknown attribute"),
-            AttrComputeError::NotApplicable => write!(f, "not applicable"),
-            AttrComputeError::Alloc(ae) => write!(f, "{:?}", ae),
-            AttrComputeError::IO(x) => write!(f, "I/O error: {}", x),
-        }
-    }
-}
-
-impl<'a> core::convert::From<IOError<'a>> for AttrComputeError<'a> {
-    fn from(e: IOError<'a>) -> Self {
-        AttrComputeError::IO(e)
-    }
-}
-
-impl<'a> core::convert::From<IOPartialError<'a>> for AttrComputeError<'a> {
-    fn from(e: IOPartialError<'a>) -> Self {
-        AttrComputeError::IO(e.to_error())
-    }
-}
-
-impl<'a> core::convert::From<AllocError> for AttrComputeError<'a> {
-    fn from(e: AllocError) -> Self {
-        AttrComputeError::Alloc(e)
-    }
-}
-
-impl<'a> core::convert::From<(AllocError, DataCell<'_>)> for AttrComputeError<'a> {
-    fn from(e: (AllocError, DataCell<'_>)) -> Self {
-        AttrComputeError::Alloc(e.0)
-    }
 }
 
 struct Item<'a> {

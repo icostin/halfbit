@@ -6,9 +6,55 @@ use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
 use core::ops::Deref;
 
+use crate::mm::AllocError;
 use crate::mm::Vector;
 use crate::mm::String;
+use crate::io::IOError;
+use crate::io::IOPartialError;
 use crate::dyn_box;
+
+#[derive(Debug)]
+pub enum AttrComputeError<'a> {
+    UnknownAttribute,
+    NotApplicable,
+    Alloc(AllocError),
+    IO(IOError<'a>),
+}
+
+impl<'a> Display for AttrComputeError<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            AttrComputeError::UnknownAttribute => write!(f, "unknown attribute"),
+            AttrComputeError::NotApplicable => write!(f, "not applicable"),
+            AttrComputeError::Alloc(ae) => write!(f, "{:?}", ae),
+            AttrComputeError::IO(x) => write!(f, "I/O error: {}", x),
+        }
+    }
+}
+
+impl<'a> core::convert::From<IOError<'a>> for AttrComputeError<'a> {
+    fn from(e: IOError<'a>) -> Self {
+        AttrComputeError::IO(e)
+    }
+}
+
+impl<'a> core::convert::From<IOPartialError<'a>> for AttrComputeError<'a> {
+    fn from(e: IOPartialError<'a>) -> Self {
+        AttrComputeError::IO(e.to_error())
+    }
+}
+
+impl<'a> core::convert::From<AllocError> for AttrComputeError<'a> {
+    fn from(e: AllocError) -> Self {
+        AttrComputeError::Alloc(e)
+    }
+}
+
+impl<'a> core::convert::From<(AllocError, DataCell<'_>)> for AttrComputeError<'a> {
+    fn from(e: (AllocError, DataCell<'_>)) -> Self {
+        AttrComputeError::Alloc(e.0)
+    }
+}
 
 pub trait DataCellOps: Debug + Display + UpperHex {
     fn type_name(&self) -> &'static str;
@@ -329,5 +375,85 @@ mod tests {
         write!(s, "{:05X}", dyn_cell).unwrap();
         assert_eq!(s, "01001");
     }
+
+    #[test]
+    fn unknown_attr_ace_fmt() {
+        extern crate std;
+        use std::string::String as StdString;
+        let mut s = StdString::new();
+        write!(s, "{}", AttrComputeError::UnknownAttribute).unwrap();
+        assert!(s.contains("unknown"));
+    }
+
+    #[test]
+    fn not_applicable_ace_fmt() {
+        extern crate std;
+        use std::string::String as StdString;
+        let mut s = StdString::new();
+        write!(s, "{}", AttrComputeError::NotApplicable).unwrap();
+        assert!(s.contains("not applicable"));
+    }
+
+    #[test]
+    fn alloc_ace_fmt() {
+        extern crate std;
+        use std::string::String as StdString;
+        let mut s = StdString::new();
+        write!(s, "{}", AttrComputeError::Alloc(AllocError::NotEnoughMemory)).unwrap();
+        assert_eq!(s, "NotEnoughMemory");
+    }
+
+    #[test]
+    fn io_ace_fmt() {
+        extern crate std;
+        use std::string::String as StdString;
+        use crate::io::ErrorCode;
+        let mut s = StdString::new();
+        write!(s, "{}", AttrComputeError::IO(IOError::with_str(ErrorCode::NoSpace, "zilch"))).unwrap();
+        assert_eq!(s, "I/O error: no space (zilch)");
+    }
+
+    #[test]
+    fn io_err_to_ace() {
+        extern crate std;
+        use std::string::String as StdString;
+        use crate::io::ErrorCode;
+        let mut s = StdString::new();
+        let ace: AttrComputeError = IOError::with_str(ErrorCode::NoSpace, "zilch").into();
+        write!(s, "{}", ace).unwrap();
+        assert_eq!(s, "I/O error: no space (zilch)");
+    }
+
+    #[test]
+    fn io_part_err_to_ace() {
+        extern crate std;
+        use std::string::String as StdString;
+        use crate::io::ErrorCode;
+        let mut s = StdString::new();
+        let ace: AttrComputeError = IOPartialError::from_error_and_size(IOError::with_str(ErrorCode::NoSpace, "zilch"), 7).into();
+        write!(s, "{}", ace).unwrap();
+        assert_eq!(s, "I/O error: no space (zilch)");
+    }
+
+    #[test]
+    fn alloc_err_to_ace() {
+        extern crate std;
+        use std::string::String as StdString;
+        let mut s = StdString::new();
+        let ace: AttrComputeError = AllocError::NotEnoughMemory.into();
+        write!(s, "{}", ace).unwrap();
+        assert_eq!(s, "NotEnoughMemory");
+    }
+
+    #[test]
+    fn alloc_err_with_cell_to_ace() {
+        extern crate std;
+        use std::string::String as StdString;
+        let mut s = StdString::new();
+        let ace: AttrComputeError = (AllocError::NotEnoughMemory, DataCell::Nothing).into();
+        write!(s, "{}", ace).unwrap();
+        assert_eq!(s, "NotEnoughMemory");
+    }
+
 }
 
