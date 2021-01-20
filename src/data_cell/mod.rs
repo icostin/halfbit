@@ -22,6 +22,8 @@ pub enum AttrComputeError<'a> {
     IO(IOError<'a>),
 }
 
+pub mod expr;
+
 impl<'a> Display for AttrComputeError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
@@ -172,6 +174,7 @@ impl UpperHex for DataCell<'_> {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
