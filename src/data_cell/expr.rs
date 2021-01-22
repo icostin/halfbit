@@ -124,6 +124,17 @@ impl<'s> Parser<'s> {
         self.cr_to_lf = cr_to_lf;
     }
 
+    pub fn set_tab_handling(&mut self, tab_width: Option<u8>) {
+        self.tab_width = tab_width;
+    }
+
+    pub fn is_whitespace(&self, ch: char) -> bool {
+        ch == ' ' || ch == '\n' || ch == '\r' || (ch == '\t' && self.tab_width.is_some())
+    }
+    pub fn is_legal_char(&self, ch: char) -> bool {
+        ch < '\x7F' && (ch >= ' ' || self.is_whitespace(ch))
+    }
+
     pub fn peek_raw_char(&self) -> Option<CharInfo> {
         let mut it = self.remaining_text.chars();
         it.next().map(|ch|
@@ -140,7 +151,7 @@ impl<'s> Parser<'s> {
                     CharInfo { codepoint: ch, width: 0, size: 1 }
                 }
             } else {
-                CharInfo { codepoint: ch, width: 1, size: 1 }
+                CharInfo { codepoint: ch, width: 1, size: ch.len_utf8() as u8 }
             })
     }
     pub fn peek_char<'x>(
@@ -150,11 +161,10 @@ impl<'s> Parser<'s> {
         self.peek_raw_char()
             .ok_or_else(|| Error::with_str(ParseErrorData::ReachedEnd, "reached end of source file"))
             .and_then(|ci| {
-                let cp = ci.codepoint as u32;
-                if (cp < 32 && !self.is_whitespace(ci.codepoint)) || cp >= 127 {
-                    Err(Error::with_str(ParseErrorData::IllegalChar(ci.codepoint), "illegal char"))
-                } else {
+                if self.is_legal_char(ci.codepoint) {
                     Ok(ci)
+                } else {
+                    Err(Error::with_str(ParseErrorData::IllegalChar(ci.codepoint), "illegal char"))
                 }
             })
     }
@@ -166,22 +176,15 @@ impl<'s> Parser<'s> {
                 self.current_line += 1;
                 self.current_column = 1;
             },
-            '\t' => {
-                if let Some(w) = self.tab_width {
-                    let w = w as u32;
-                    self.current_column = ((self.current_column - 1) / w + 1) * w + 1;
-                }
-            }
-            _ => {
-                self.current_column += ci.width as u32;
-            }
+            '\t' => if let Some(w) = self.tab_width {
+                let w = w as u32;
+                self.current_column = ((self.current_column - 1) / w + 1) * w + 1;
+            },
+            _ => { self.current_column += ci.width as u32; }
         }
         self.remaining_text = &self.remaining_text[(ci.size as usize)..];
     }
 
-    pub fn is_whitespace(&self, ch: char) -> bool {
-        ch == ' ' || ch == '\n' || ch == '\r' || (ch == '\t' && self.tab_width.is_some())
-    }
     pub fn skip_whitespace<'x>(&mut self) {
         while let Some(ci) = self.peek_raw_char() {
             if !self.is_whitespace(ci.codepoint) { break; }
@@ -214,11 +217,11 @@ mod tests {
         assert_eq!(p.peek_raw_char().unwrap(), ucp);
     }
 
+    #[test]
     fn peek_raw_large_code_point() {
         let p = Parser::new(Source::new("\u{10348}", "-"));
-        assert_eq!(p.peek_raw_char().unwrap(), CharInfo { codepoint: '\u{10348}', width: 0, size: 4 });
+        assert_eq!(p.peek_raw_char().unwrap(), CharInfo { codepoint: '\u{10348}', width: 1, size: 4 });
     }
-
 
     #[test]
     fn peek_cr_lf_no_conv() {
@@ -256,6 +259,40 @@ mod tests {
         assert_eq!(p.current_line, 4);
         assert_eq!(p.current_column, 7);
         assert_eq!(p.peek_raw_char(), None);
+    }
+
+    #[test]
+    fn peek_char_at_end() {
+        let mut p = Parser::new(Source::new("", "-"));
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*p.peek_char(&mut xc).unwrap_err().get_data(), ParseErrorData::ReachedEnd)
+    }
+
+    #[test]
+    fn peek_illegal_char() {
+        let mut p = Parser::new(Source::new("\x01", "-"));
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(*p.peek_char(&mut xc).unwrap_err().get_data(), ParseErrorData::IllegalChar('\x01'))
+    }
+
+    #[test]
+    fn peek_char() {
+        let mut p = Parser::new(Source::new("!", "-"));
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(p.peek_char(&mut xc).unwrap(), CharInfo { codepoint: '!', width: 1, size: 1 });
+    }
+
+    #[test]
+    fn consume_tab() {
+        let mut p = Parser::new(Source::new("\t", "-"));
+        p.set_tab_handling(Some(5));
+        let mut xc = ExecutionContext::nop();
+        let ci = CharInfo { codepoint: '\t', width: 0, size: 1 };
+        assert_eq!(p.peek_char(&mut xc).unwrap(), ci);
+        p.consume_char(ci);
+        assert_eq!(p.current_line, 1);
+        assert_eq!(p.current_column, 6);
+
     }
 }
 
