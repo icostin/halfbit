@@ -1,5 +1,6 @@
 use super::Vector;
 use super::AllocatorRef;
+use super::AllocError;
 use core::fmt::Debug;
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
@@ -26,6 +27,10 @@ impl<'a> String<'a> {
     }
     pub fn as_str(&self) -> &str {
         unsafe { core::str::from_utf8_unchecked(self.data.as_slice()) }
+    }
+    pub fn push(&mut self, c: char) -> Result<(), AllocError> {
+        let mut buf = [0_u8; 4];
+        self.data.append_from_slice(c.encode_utf8(&mut buf).as_bytes())
     }
 }
 
@@ -77,6 +82,15 @@ mod tests {
         let b = String::map_str("abc /\\ \"def\"");
         write!(s, "-{:?}-", b).unwrap();
         assert_eq!(s.as_str(), "-\"abc /\\\\ \\\"def\\\"\"-");
+    }
+
+    #[test]
+    fn push_char() {
+        let mut buffer = [0; 256];
+        let a = BumpAllocator::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        s.push('\u{101234}').unwrap();
+        assert_eq!(s.as_str(), "\u{101234}");
     }
 }
 
