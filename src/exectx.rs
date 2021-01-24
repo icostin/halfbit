@@ -51,6 +51,16 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
+    pub fn to_non_logging(&self) -> ExecutionContext<'a> {
+        ExecutionContext {
+            main_allocator: self.main_allocator,
+            error_allocator: self.error_allocator,
+            log_stream: NULL_STREAM.get(),
+            log_level: LogLevel::Critical,
+            logging_error_mask: 0,
+        }
+    }
+
     pub fn get_main_allocator(&self) -> AllocatorRef<'a> {
         self.main_allocator
     }

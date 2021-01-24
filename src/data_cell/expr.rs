@@ -100,8 +100,9 @@ pub struct PostfixExpr<'a> {
     items: Vector<'a, PostfixItem<'a>>,
 }
 
-pub struct Parser<'s> {
+pub struct Parser<'s, 't> {
     source: &'s Source<'s>,
+    exectx: ExecutionContext<'t>,
     cr_lf_to_lf: bool,
     cr_to_lf: bool,
     tab_width: Option<u8>,
@@ -135,10 +136,11 @@ impl<'s> SourceSlice<'s> {
     }
 }
 
-impl<'s> Parser<'s> {
-    pub fn new(src: &'s Source<'s>) -> Self {
+impl<'s, 't> Parser<'s, 't> {
+    pub fn new(src: &'s Source<'s>, xc: &ExecutionContext<'t>) -> Self {
         Parser {
             source: src,
+            exectx: xc.to_non_logging(),
             cr_lf_to_lf: true,
             cr_to_lf: true,
             tab_width: None,
@@ -182,10 +184,7 @@ impl<'s> Parser<'s> {
                 CharInfo { codepoint: ch, width: 1, size: ch.len_utf8() as u8 }
             })
     }
-    pub fn peek_char<'x>(
-        &mut self,
-        _xc: &mut ExecutionContext<'x>
-    ) -> Result<CharInfo, ParseError<'x>> {
+    pub fn peek_char(&mut self) -> Result<CharInfo, ParseError<'t>> {
         self.peek_raw_char()
             .ok_or_else(|| Error::with_str(ParseErrorData::ReachedEnd, "reached end of source file"))
             .and_then(|ci| {
@@ -249,13 +248,12 @@ impl<'s> Parser<'s> {
         c.is_ascii_alphanumeric() || c == '_'
     }
 
-    fn parse_identifier<'a, 'x>(
-        &'a mut self,
-        xc: &mut ExecutionContext<'x>
-    ) -> Result<Token<'a, BasicTokenData<'x>>, ParseError<'x>> {
-        let mut id = xc.string();
+    fn parse_identifier(
+        &mut self,
+    ) -> Result<Token<'s, BasicTokenData<'t>>, ParseError<'t>> {
+        let mut id = self.exectx.string();
         let mut source_slice = self.here();
-        while let Ok(ci) = self.peek_char(xc) {
+        while let Ok(ci) = self.peek_char() {
             if !Parser::is_valid_identifier_char(ci.codepoint) {
                 break;
             }
@@ -269,10 +267,9 @@ impl<'s> Parser<'s> {
         })
     }
 
-    pub fn parse_basic_token<'a, 'x>(
-        &'a mut self,
-        xc: &mut ExecutionContext<'x>
-    ) -> Result<Token<'a, BasicTokenData<'x>>, ParseError<'x>> {
+    pub fn parse_basic_token(
+        &mut self
+    ) -> Result<Token<'s, BasicTokenData<'t>>, ParseError<'t>> {
         self.skip_whitespace();
         if self.remaining_text.is_empty() {
             return Ok(Token {
@@ -280,9 +277,9 @@ impl<'s> Parser<'s> {
                 source_slice: self.here()
             })
         }
-        let c = self.peek_char(xc)?;
+        let c = self.peek_char()?;
         if Parser::can_start_identifier(c.codepoint) {
-            return self.parse_identifier(xc);
+            return self.parse_identifier();
         }
         let mut ss = self.here();
         let td = match c.codepoint {
@@ -293,7 +290,7 @@ impl<'s> Parser<'s> {
             _ => {
                 let cp = c.codepoint;
                 self.consume_char(c);
-                return Err(xc_err!(xc, ParseErrorData::UnexpectedChar(cp), "unexpected char", "unexpected char {:?} at {}:{}", cp, ss.start_line, ss.start_column));
+                return Err(xc_err!(self.exectx, ParseErrorData::UnexpectedChar(cp), "unexpected char", "unexpected char {:?} at {}:{}", cp, ss.start_line, ss.start_column));
             }
         };
         self.end_slice_here(&mut ss);
@@ -303,29 +300,26 @@ impl<'s> Parser<'s> {
         })
     }
 
-    pub fn parse_primary_expr<'a, 'x>(
-        &'a mut self,
-        xc: &mut ExecutionContext<'x>
-    ) -> Result<Token<'a, PrimaryExpr<'x>>, ParseError<'x>> {
-        let t = self.parse_basic_token(xc)?;
+    pub fn parse_primary_expr(
+        &mut self,
+    ) -> Result<Token<'s, PrimaryExpr<'t>>, ParseError<'t>> {
+        let t = self.parse_basic_token()?;
         if let BasicTokenData::Identifier(id) = t.data {
             Ok(Token {
                 data: PrimaryExpr::Identifier(id),
                 source_slice: t.source_slice,
             })
         } else {
-            Err(xc_err!(xc, ParseErrorData::UnexpectedToken, "identifier expected", "identifier expected at {}:{}", t.source_slice.start_line, t.source_slice.start_column))
+            Err(xc_err!(self.exectx, ParseErrorData::UnexpectedToken, "identifier expected", "identifier expected at {}:{}", t.source_slice.start_line, t.source_slice.start_column))
         }
     }
 
-    pub fn parse_postfix_expr<'a, 'x>(
-        &'a mut self,
-        xc: &mut ExecutionContext<'x>
-    ) -> Result<Token<'a, PostfixExpr<'x>>, ParseError<'x>> {
-        let pe = self.parse_primary_expr(xc)?;
+    pub fn parse_postfix_expr(
+        &mut self,
+    ) -> Result<Token<'s, PostfixExpr<'t>>, ParseError<'t>> {
+        let _pe = self.parse_primary_expr()?;
         panic!("aaaaaa");
     }
-
 
 }
 
@@ -348,46 +342,52 @@ mod tests {
 
     #[test]
     fn peek_raw_ctl_char() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\x0B", "-");
-        let p = Parser::new(&src);
+        let p = Parser::new(&src, &xc);
         let ucp = CharInfo { codepoint: '\x0B', width: 0, size: 1 };
         assert_eq!(p.peek_raw_char().unwrap(), ucp);
     }
 
     #[test]
     fn peek_raw_large_code_point() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\u{10348}", "-");
-        let p = Parser::new(&src);
+        let p = Parser::new(&src, &xc);
         assert_eq!(p.peek_raw_char().unwrap(), CharInfo { codepoint: '\u{10348}', width: 1, size: 4 });
     }
 
     #[test]
     fn peek_cr_lf_no_conv() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\r\n", "-");
-        let mut p = Parser::new(&src);
+        let mut p = Parser::new(&src, &xc);
         p.set_new_line_handling(false, false);
         assert_eq!(p.peek_raw_char().unwrap(), CharInfo { codepoint: '\r', width: 0, size: 1 });
     }
 
     #[test]
     fn peek_cr_lf_all_conv() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\r\n", "-");
-        let mut p = Parser::new(&src);
+        let mut p = Parser::new(&src, &xc);
         p.set_new_line_handling(true, true);
         assert_eq!(p.peek_raw_char().unwrap(), CharInfo { codepoint: '\n', width: 0, size: 2 });
     }
     #[test]
     fn peek_cr_lf_part_conv() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\r\n", "-");
-        let mut p = Parser::new(&src);
+        let mut p = Parser::new(&src, &xc);
         p.set_new_line_handling(false, true);
         assert_eq!(p.peek_raw_char().unwrap(), CharInfo { codepoint: '\n', width: 0, size: 1 });
     }
 
     #[test]
     fn skip_whitespace() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\r\n\n\r      a", "-");
-        let mut p = Parser::new(&src);
+        let mut p = Parser::new(&src, &xc);
         p.skip_whitespace();
         assert_eq!(p.current_line, 4);
         assert_eq!(p.current_column, 7);
@@ -396,8 +396,9 @@ mod tests {
 
     #[test]
     fn skip_whitespace_to_end() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\r\n\n\r      ", "-");
-        let mut p = Parser::new(&src);
+        let mut p = Parser::new(&src, &xc);
         p.skip_whitespace();
         assert_eq!(p.current_line, 4);
         assert_eq!(p.current_column, 7);
@@ -407,35 +408,35 @@ mod tests {
     #[test]
     fn peek_char_at_end() {
         let src = Source::new("", "-");
-        let mut p = Parser::new(&src);
-        let mut xc = ExecutionContext::nop();
-        assert_eq!(*p.peek_char(&mut xc).unwrap_err().get_data(), ParseErrorData::ReachedEnd)
+        let xc = ExecutionContext::nop();
+        let mut p = Parser::new(&src, &xc);
+        assert_eq!(*p.peek_char().unwrap_err().get_data(), ParseErrorData::ReachedEnd)
     }
 
     #[test]
     fn peek_illegal_char() {
         let src = Source::new("\x01", "-");
-        let mut p = Parser::new(&src);
-        let mut xc = ExecutionContext::nop();
-        assert_eq!(*p.peek_char(&mut xc).unwrap_err().get_data(), ParseErrorData::IllegalChar('\x01'))
+        let xc = ExecutionContext::nop();
+        let mut p = Parser::new(&src, &xc);
+        assert_eq!(*p.peek_char().unwrap_err().get_data(), ParseErrorData::IllegalChar('\x01'))
     }
 
     #[test]
     fn peek_char() {
         let src = Source::new("!", "-");
-        let mut p = Parser::new(&src);
-        let mut xc = ExecutionContext::nop();
-        assert_eq!(p.peek_char(&mut xc).unwrap(), CharInfo { codepoint: '!', width: 1, size: 1 });
+        let xc = ExecutionContext::nop();
+        let mut p = Parser::new(&src, &xc);
+        assert_eq!(p.peek_char().unwrap(), CharInfo { codepoint: '!', width: 1, size: 1 });
     }
 
     #[test]
     fn consume_tab() {
+        let xc = ExecutionContext::nop();
         let src = Source::new("\t", "-");
-        let mut p = Parser::new(&src);
+        let mut p = Parser::new(&src, &xc);
         p.set_tab_handling(Some(5));
-        let mut xc = ExecutionContext::nop();
         let ci = CharInfo { codepoint: '\t', width: 0, size: 1 };
-        assert_eq!(p.peek_char(&mut xc).unwrap(), ci);
+        assert_eq!(p.peek_char().unwrap(), ci);
         p.consume_char(ci);
         assert_eq!(p.current_line, 1);
         assert_eq!(p.current_column, 6);
@@ -444,10 +445,10 @@ mod tests {
 
     #[test]
     fn only_whitespaces_produce_end_token() {
-        let mut xc = ExecutionContext::nop();
+        let xc = ExecutionContext::nop();
         let src = Source::new("       \n         ", "-");
-        let mut p = Parser::new(&src);
-        let t = p.parse_basic_token(&mut xc).unwrap();
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_basic_token().unwrap();
         assert_eq!(t.data, BasicTokenData::End);
     }
 
@@ -459,10 +460,10 @@ mod tests {
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
         let a = BumpAllocator::new(&mut buffer);
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
         let src = Source::new("  best.worst", "-");
-        let mut p = Parser::new(&src);
-        let t = p.parse_basic_token(&mut xc).unwrap();
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_basic_token().unwrap();
         assert_eq!(t.source_slice.as_str(), "best");
         assert_eq!((t.source_slice.start_line, t.source_slice.start_column), (1, 3));
         assert_eq!((t.source_slice.end_line, t.source_slice.end_column), (1, 7));
@@ -473,19 +474,18 @@ mod tests {
     #[test]
     fn identifier_token_oom() {
         use crate::mm::AllocError;
-        let mut xc = ExecutionContext::nop();
+        let xc = ExecutionContext::nop();
         let src = Source::new("  best.worst", "-");
-        let mut p = Parser::new(&src);
-        assert_eq!(*p.parse_basic_token(&mut xc).unwrap_err().get_data(), ParseErrorData::Alloc(AllocError::UnsupportedOperation));
-
+        let mut p = Parser::new(&src, &xc);
+        assert_eq!(*p.parse_basic_token().unwrap_err().get_data(), ParseErrorData::Alloc(AllocError::UnsupportedOperation));
     }
 
     #[test]
     fn dot_token() {
-        let mut xc = ExecutionContext::nop();
+        let xc = ExecutionContext::nop();
         let src = Source::new(".a", "-");
-        let mut p = Parser::new(&src);
-        let t = p.parse_basic_token(&mut xc).unwrap();
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_basic_token().unwrap();
         assert_eq!(t.data, BasicTokenData::Dot);
         assert_eq!(t.source_slice.as_str(), ".");
         assert_eq!((t.source_slice.start_line, t.source_slice.start_column), (1, 1));
@@ -494,10 +494,10 @@ mod tests {
 
     #[test]
     fn next_token_encounters_bad_char() {
-        let mut xc = ExecutionContext::nop();
+        let xc = ExecutionContext::nop();
         let src = Source::new("`", "-");
-        let mut p = Parser::new(&src);
-        assert_eq!(*p.parse_basic_token(&mut xc).unwrap_err().get_data(), ParseErrorData::UnexpectedChar('`'));
+        let mut p = Parser::new(&src, &xc);
+        assert_eq!(*p.parse_basic_token().unwrap_err().get_data(), ParseErrorData::UnexpectedChar('`'));
     }
 
     #[test]
@@ -508,10 +508,10 @@ mod tests {
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
         let a = BumpAllocator::new(&mut buffer);
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
         let src = Source::new("foo.bar", "-");
-        let mut p = Parser::new(&src);
-        let t = p.parse_primary_expr(&mut xc).unwrap();
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_primary_expr().unwrap();
         assert_eq!(t.data, PrimaryExpr::Identifier(String::map_str("foo")));
         assert_eq!((t.source_slice.start_line, t.source_slice.start_column), (1, 1));
         assert_eq!((t.source_slice.end_line, t.source_slice.end_column), (1, 4));
@@ -525,10 +525,10 @@ mod tests {
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
         let a = BumpAllocator::new(&mut buffer);
-        let mut xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
         let src = Source::new("foo .bar/3", "-");
-        let mut p = Parser::new(&src);
-        let t = p.parse_postfix_expr(&mut xc).unwrap();
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_postfix_expr().unwrap();
         assert_eq!(t.source_slice.as_str(), "foo.bar");
     }
 
