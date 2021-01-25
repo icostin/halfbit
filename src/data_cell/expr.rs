@@ -103,6 +103,7 @@ pub struct PostfixExpr<'a> {
 pub struct Parser<'s, 't> {
     source: &'s Source<'s>,
     exectx: ExecutionContext<'t>,
+    lookup_token: Option<Token<'s, BasicTokenData<'t>>>,
     cr_lf_to_lf: bool,
     cr_to_lf: bool,
     tab_width: Option<u8>,
@@ -114,6 +115,16 @@ pub struct Parser<'s, 't> {
 impl<'a> From<AllocError> for ParseError<'a> {
     fn from(e: AllocError) -> Self {
         ParseError::with_str(ParseErrorData::Alloc(e), "alloc error")
+    }
+}
+
+impl<'t> BasicTokenData<'t> {
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            BasicTokenData::End => "end-of-file",
+            BasicTokenData::Identifier(_) => "identifier",
+            BasicTokenData::Dot => "dot",
+        }
     }
 }
 
@@ -141,6 +152,7 @@ impl<'s, 't> Parser<'s, 't> {
         Parser {
             source: src,
             exectx: xc.to_non_logging(),
+            lookup_token: None,
             cr_lf_to_lf: true,
             cr_to_lf: true,
             tab_width: None,
@@ -300,10 +312,38 @@ impl<'s, 't> Parser<'s, 't> {
         })
     }
 
+    pub fn preview_next_token(
+        &mut self
+    ) -> Result<&Token<'s, BasicTokenData<'t>>, ParseError<'t>> {
+        if self.lookup_token.is_none() {
+            self.lookup_token = Some(self.parse_basic_token()?);
+        }
+        Ok(self.lookup_token.as_ref().unwrap())
+    }
+
+    pub fn get_next_token(
+        &mut self
+    ) -> Result<Token<'s, BasicTokenData<'t>>, ParseError<'t>> {
+        self.preview_next_token()?;
+        Ok(self.lookup_token.take().unwrap())
+    }
+
+    pub fn expect_token<'a>(
+        &mut self,
+        expected: BasicTokenData<'a>,
+    ) -> Result<Token<'s, BasicTokenData<'t>>, ParseError<'t>> {
+        let t = self.get_next_token()?;
+        if t.data == expected {
+            Ok(t)
+        } else {
+            Err(xc_err!(self.exectx, ParseErrorData::UnexpectedToken, "unexpected token", "expecting {} not {} at {}:{}", expected.kind_str(), t.data.kind_str(), t.source_slice.start_line, t.source_slice.start_column))
+        }
+    }
+
     pub fn parse_primary_expr(
         &mut self,
     ) -> Result<Token<'s, PrimaryExpr<'t>>, ParseError<'t>> {
-        let t = self.parse_basic_token()?;
+        let t = self.get_next_token()?;
         if let BasicTokenData::Identifier(id) = t.data {
             Ok(Token {
                 data: PrimaryExpr::Identifier(id),
@@ -317,7 +357,8 @@ impl<'s, 't> Parser<'s, 't> {
     pub fn parse_postfix_expr(
         &mut self,
     ) -> Result<Token<'s, PostfixExpr<'t>>, ParseError<'t>> {
-        let _pe = self.parse_primary_expr()?;
+        let pe = self.parse_primary_expr()?;
+        self.expect_token(BasicTokenData::Dot)?;
         panic!("aaaaaa");
     }
 
