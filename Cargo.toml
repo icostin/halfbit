@@ -16,6 +16,8 @@ use-std = []
 
 [dependencies]
 libc = { version = "0.2", optional = true }
+num-traits = "0.2"
+num-derive = "0.3"
 
 [dev-dependencies]
 clap = "2"

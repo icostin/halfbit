@@ -1,4 +1,7 @@
 #![no_std]
+#[macro_use]
+extern crate num_derive;
+extern crate num_traits;
 
 pub mod num; // numeric types/operations
 

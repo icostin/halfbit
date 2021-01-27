@@ -1,3 +1,10 @@
+use core::iter::Iterator;
+use core::fmt::Display;
+use core::fmt::Formatter;
+use core::fmt::Result as FmtResult;
+
+use crate::num_traits::FromPrimitive;
+
 use crate::ExecutionContext;
 use crate::mm::Vector;
 use crate::mm::String;
@@ -46,6 +53,22 @@ pub struct CharInfo {
     size: u8,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
+pub enum BasicTokenType {
+    End,
+    Identifier,
+    Dot,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BasicTokenTypeBitmap(u64);
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BasicTokenTypeBitmapIterator {
+    mask: u64,
+    pos: u8,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum BasicTokenData<'a> {
     End,
@@ -90,7 +113,7 @@ pub enum PostfixRoot<'a> {
 }
 
 pub enum PostfixItem<'a> {
-    Attr(String<'a>), // points to bar or baz in foo.bar.baz
+    Property(String<'a>), // points to bar or baz in foo.bar.baz
     // Subscript(ExprList<'a>), // a[b, c]
     // Call(ExprList<'a>), // a(b, c)
 }
@@ -118,13 +141,97 @@ impl<'a> From<AllocError> for ParseError<'a> {
     }
 }
 
-impl<'t> BasicTokenData<'t> {
-    pub fn kind_str(&self) -> &'static str {
+impl<'a, T> From<(AllocError, T)> for ParseError<'a> {
+    fn from(e: (AllocError, T)) -> Self {
+        ParseError::with_str(ParseErrorData::Alloc(e.0), "alloc error")
+    }
+}
+
+impl BasicTokenType {
+    pub fn name(&self) -> &'static str {
         match self {
-            BasicTokenData::End => "end-of-file",
-            BasicTokenData::Identifier(_) => "identifier",
-            BasicTokenData::Dot => "dot",
+            BasicTokenType::End => "end-of-file",
+            BasicTokenType::Identifier => "identifier",
+            BasicTokenType::Dot => "dot",
         }
+    }
+    pub fn to_bitmap(&self) -> BasicTokenTypeBitmap {
+        BasicTokenTypeBitmap(1_u64 << (*self as usize))
+    }
+}
+
+impl Display for BasicTokenType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        Display::fmt(self.name(), f)
+    }
+}
+
+impl BasicTokenTypeBitmap {
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+    pub fn contains(&self, btt: BasicTokenType) -> bool {
+        ((self.0 >> (btt as usize)) & 1) != 0
+    }
+    pub fn item_count(&self) -> u32 {
+        self.0.count_ones()
+    }
+    pub fn from_list(l: &[BasicTokenType]) -> Self {
+        let mut b = BasicTokenTypeBitmap(0);
+        for t in l {
+            b.0 |= t.to_bitmap().0;
+        }
+        b
+    }
+    pub fn iter(&self) -> BasicTokenTypeBitmapIterator {
+        BasicTokenTypeBitmapIterator {
+            mask: self.0,
+            pos: 0,
+        }
+    }
+}
+
+impl Iterator for BasicTokenTypeBitmapIterator {
+    type Item = BasicTokenType;
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.pos < 64 && (self.mask & (1_u64 << self.pos)) == 0 { self.pos += 1; }
+        if self.pos == 64 {
+            None
+        } else {
+            BasicTokenType::from_u8(self.pos)
+        }
+    }
+}
+
+impl Display for BasicTokenTypeBitmap {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        if self.is_empty() {
+            Display::fmt("no types", f)
+        } else {
+            let mut first = true;
+            for btt in self.iter() {
+                if !first {
+                    write!(f, ", ")?;
+                } else {
+                    first = false;
+                }
+                Display::fmt(&btt, f)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+impl<'t> BasicTokenData<'t> {
+    pub fn to_type(&self) -> BasicTokenType {
+        match self {
+            BasicTokenData::End => BasicTokenType::End,
+            BasicTokenData::Identifier(_) => BasicTokenType::Identifier,
+            BasicTokenData::Dot => BasicTokenType::Dot,
+        }
+    }
+    pub fn type_str(&self) -> &'static str {
+        self.to_type().name()
     }
 }
 
@@ -148,6 +255,7 @@ impl<'s> SourceSlice<'s> {
 }
 
 impl<'s, 't> Parser<'s, 't> {
+
     pub fn new(src: &'s Source<'s>, xc: &ExecutionContext<'t>) -> Self {
         Parser {
             source: src,
@@ -328,15 +436,35 @@ impl<'s, 't> Parser<'s, 't> {
         Ok(self.lookup_token.take().unwrap())
     }
 
-    pub fn expect_token<'a>(
+    pub fn expect_token(
         &mut self,
-        expected: BasicTokenData<'a>,
+        expected: BasicTokenTypeBitmap,
     ) -> Result<Token<'s, BasicTokenData<'t>>, ParseError<'t>> {
         let t = self.get_next_token()?;
-        if t.data == expected {
+        if expected.contains(t.data.to_type()) {
             Ok(t)
         } else {
-            Err(xc_err!(self.exectx, ParseErrorData::UnexpectedToken, "unexpected token", "expecting {} not {} at {}:{}", expected.kind_str(), t.data.kind_str(), t.source_slice.start_line, t.source_slice.start_column))
+            Err(xc_err!(self.exectx, ParseErrorData::UnexpectedToken, "unexpected token", "expecting [{}] not {} at {}:{}", expected, t.data.type_str(), t.source_slice.start_line, t.source_slice.start_column))
+        }
+    }
+
+    pub fn get_identifier_str(
+        &mut self
+    ) -> Result<String<'t>, ParseError<'t>> {
+        if let BasicTokenData::Identifier(s) = self.expect_token(BasicTokenType::Identifier.to_bitmap())?.data {
+            Ok(s)
+        } else { panic!("bug"); }
+    }
+
+    pub fn get_token_matching_types(
+        &mut self,
+        desired: BasicTokenTypeBitmap,
+    ) -> Result<Option<Token<'s, BasicTokenData<'t>>>, ParseError<'t>> {
+        let t = self.preview_next_token()?;
+        if desired.contains(t.data.to_type()) {
+            self.get_next_token().map(|t| Some(t))
+        } else {
+            Ok(None)
         }
     }
 
@@ -357,11 +485,22 @@ impl<'s, 't> Parser<'s, 't> {
     pub fn parse_postfix_expr(
         &mut self,
     ) -> Result<Token<'s, PostfixExpr<'t>>, ParseError<'t>> {
-        let pe = self.parse_primary_expr()?;
-        self.expect_token(BasicTokenData::Dot)?;
-        panic!("aaaaaa");
+        let mut ss = self.here();
+        let mut pfx_expr = PostfixExpr {
+            root: PostfixRoot::Primary(self.parse_primary_expr()?.data),
+            items: self.exectx.vector(),
+        };
+        while let Some(dot) = self.get_token_matching_types(
+            BasicTokenType::Dot.to_bitmap())? {
+            let id_str = self.get_identifier_str()?;
+            pfx_expr.items.push(PostfixItem::Property(id_str))?;
+        }
+        self.end_slice_here(&mut ss);
+        Ok(Token {
+            data: pfx_expr,
+            source_slice: ss,
+        })
     }
-
 }
 
 #[cfg(test)]
