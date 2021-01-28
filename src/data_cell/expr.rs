@@ -107,17 +107,20 @@ pub enum PrimaryExpr<'a> {
     Identifier(String<'a>),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum PostfixRoot<'a> {
     Primary(PrimaryExpr<'a>), // points to foo in foo.bar
     // Implied... for expressions like .bla (points to the empty space before .)
 }
 
+#[derive(Debug, PartialEq)]
 pub enum PostfixItem<'a> {
     Property(String<'a>), // points to bar or baz in foo.bar.baz
     // Subscript(ExprList<'a>), // a[b, c]
     // Call(ExprList<'a>), // a(b, c)
 }
 
+#[derive(Debug, PartialEq)]
 pub struct PostfixExpr<'a> {
     root: PostfixRoot<'a>,
     items: Vector<'a, PostfixItem<'a>>,
@@ -173,15 +176,14 @@ impl BasicTokenTypeBitmap {
     pub fn contains(&self, btt: BasicTokenType) -> bool {
         ((self.0 >> (btt as usize)) & 1) != 0
     }
-    pub fn item_count(&self) -> u32 {
+    pub fn len(&self) -> u32 {
         self.0.count_ones()
     }
     pub fn from_list(l: &[BasicTokenType]) -> Self {
         let mut b = BasicTokenTypeBitmap(0);
         for t in l {
             b.0 |= t.to_bitmap().0;
-        }
-        b
+        } b
     }
     pub fn iter(&self) -> BasicTokenTypeBitmapIterator {
         BasicTokenTypeBitmapIterator {
@@ -198,7 +200,9 @@ impl Iterator for BasicTokenTypeBitmapIterator {
         if self.pos == 64 {
             None
         } else {
-            BasicTokenType::from_u8(self.pos)
+            let p = self.pos;
+            self.pos += 1;
+            BasicTokenType::from_u8(p)
         }
     }
 }
@@ -490,12 +494,12 @@ impl<'s, 't> Parser<'s, 't> {
             root: PostfixRoot::Primary(self.parse_primary_expr()?.data),
             items: self.exectx.vector(),
         };
-        while let Some(dot) = self.get_token_matching_types(
+        while let Some(_dot) = self.get_token_matching_types(
             BasicTokenType::Dot.to_bitmap())? {
             let id_str = self.get_identifier_str()?;
             pfx_expr.items.push(PostfixItem::Property(id_str))?;
+            self.end_slice_here(&mut ss);
         }
-        self.end_slice_here(&mut ss);
         Ok(Token {
             data: pfx_expr,
             source_slice: ss,
@@ -506,6 +510,67 @@ impl<'s, 't> Parser<'s, 't> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_error_from_alloc() {
+        let pe: ParseError<'_> = AllocError::NotEnoughMemory.into();
+        assert_eq!(*pe.get_data(), ParseErrorData::Alloc(AllocError::NotEnoughMemory));
+        let pe: ParseError<'_> = (AllocError::UnsupportedOperation, 0).into();
+        assert_eq!(*pe.get_data(), ParseErrorData::Alloc(AllocError::UnsupportedOperation));
+    }
+
+    #[test]
+    fn basic_token_type_bitmap_iterate() {
+        let b = BasicTokenTypeBitmap::from_list(&[BasicTokenType::End, BasicTokenType::Identifier]);
+        let mut i = b.iter();
+        assert_eq!(b.len(), 2);
+        assert_eq!(i.next(), Some(BasicTokenType::End));
+        assert_eq!(i.next(), Some(BasicTokenType::Identifier));
+        assert_eq!(i.next(), None);
+    }
+
+    #[test]
+    fn basic_token_type_names() {
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 2048];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let e = xc_err!(xc, (), "-grr-", "{}", BasicTokenType::End.to_bitmap());
+        assert_eq!(e.get_msg(), "end-of-file");
+    }
+
+    #[test]
+    fn empty_basic_token_type_bitmap_display() {
+        use core::fmt::Write;
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 2048];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let mut s = xc.string();
+        write!(s, "{}", BasicTokenTypeBitmap(0)).unwrap();
+        assert_eq!(s.as_str(), "no types");
+    }
+
+    #[test]
+    fn basic_token_type_bitmap_display() {
+        use core::fmt::Write;
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 2048];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let mut s = xc.string();
+        write!(s, "{}", BasicTokenTypeBitmap::from_list(&[BasicTokenType::End, BasicTokenType::Dot])).unwrap();
+        assert_eq!(s.as_str(), "end-of-file, dot");
+    }
 
     #[test]
     fn source_new() {
@@ -677,8 +742,27 @@ mod tests {
         let xc = ExecutionContext::nop();
         let src = Source::new("`", "-");
         let mut p = Parser::new(&src, &xc);
-        assert_eq!(*p.parse_basic_token().unwrap_err().get_data(), ParseErrorData::UnexpectedChar('`'));
+        let e = p.parse_basic_token().unwrap_err();
+        assert_eq!(*e.get_data(), ParseErrorData::UnexpectedChar('`'));
+        assert_eq!(e.get_msg(), "unexpected char");
     }
+
+    #[test]
+    fn next_token_encounters_bad_char_with_error_msg() {
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 256];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let src = Source::new("`", "-");
+        let mut p = Parser::new(&src, &xc);
+        let e = p.parse_basic_token().unwrap_err();
+        assert_eq!(*e.get_data(), ParseErrorData::UnexpectedChar('`'));
+        assert_eq!(e.get_msg(), "unexpected char '`' at 1:1");
+    }
+
 
     #[test]
     fn id_as_primary_expr() {
@@ -706,10 +790,27 @@ mod tests {
         let mut buffer = [0; 256];
         let a = BumpAllocator::new(&mut buffer);
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
-        let src = Source::new("foo .bar/3", "-");
+        let src = Source::new("foo .bar baz", "-");
         let mut p = Parser::new(&src, &xc);
         let t = p.parse_postfix_expr().unwrap();
-        assert_eq!(t.source_slice.as_str(), "foo.bar");
+        assert_eq!(t.source_slice.as_str(), "foo .bar");
+    }
+
+    #[test]
+    fn postfix_dot_number() {
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 2048];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let src = Source::new("foo .bar.  .", "-");
+        let mut p = Parser::new(&src, &xc);
+        let e = p.parse_postfix_expr().unwrap_err();
+        assert_eq!(*e.get_data(), ParseErrorData::UnexpectedToken);
+        assert_eq!(e.get_msg(), "expecting [identifier] not dot at 1:12");
+
     }
 
 }
