@@ -180,10 +180,11 @@ impl BasicTokenTypeBitmap {
         self.0.count_ones()
     }
     pub fn from_list(l: &[BasicTokenType]) -> Self {
-        let mut b = BasicTokenTypeBitmap(0);
+        let mut b = 0_u64;
         for t in l {
-            b.0 |= t.to_bitmap().0;
-        } b
+            b |= t.to_bitmap().0;
+        }
+        BasicTokenTypeBitmap(b)
     }
     pub fn iter(&self) -> BasicTokenTypeBitmapIterator {
         BasicTokenTypeBitmapIterator {
@@ -236,6 +237,12 @@ impl<'t> BasicTokenData<'t> {
     }
     pub fn type_str(&self) -> &'static str {
         self.to_type().name()
+    }
+    pub fn unwrap_identifier_data(self) -> String<'t> {
+        match self {
+            BasicTokenData::Identifier(s) => s,
+            _ => { panic!("expecting Identifier, not {:?}", self); }
+        }
     }
 }
 
@@ -378,9 +385,7 @@ impl<'s, 't> Parser<'s, 't> {
         let mut id = self.exectx.string();
         let mut source_slice = self.here();
         while let Ok(ci) = self.peek_char() {
-            if !Parser::is_valid_identifier_char(ci.codepoint) {
-                break;
-            }
+            if !Parser::is_valid_identifier_char(ci.codepoint) { break; }
             id.push(ci.codepoint)?;
             self.consume_char(ci);
         }
@@ -415,7 +420,7 @@ impl<'s, 't> Parser<'s, 't> {
                 let cp = c.codepoint;
                 self.consume_char(c);
                 return Err(xc_err!(self.exectx, ParseErrorData::UnexpectedChar(cp), "unexpected char", "unexpected char {:?} at {}:{}", cp, ss.start_line, ss.start_column));
-            }
+            },
         };
         self.end_slice_here(&mut ss);
         Ok(Token {
@@ -455,9 +460,7 @@ impl<'s, 't> Parser<'s, 't> {
     pub fn get_identifier_str(
         &mut self
     ) -> Result<String<'t>, ParseError<'t>> {
-        if let BasicTokenData::Identifier(s) = self.expect_token(BasicTokenType::Identifier.to_bitmap())?.data {
-            Ok(s)
-        } else { panic!("bug"); }
+        Ok(self.expect_token(BasicTokenType::Identifier.to_bitmap())?.data.unwrap_identifier_data())
     }
 
     pub fn get_token_matching_types(
@@ -712,8 +715,13 @@ mod tests {
         assert_eq!(t.source_slice.as_str(), "best");
         assert_eq!((t.source_slice.start_line, t.source_slice.start_column), (1, 3));
         assert_eq!((t.source_slice.end_line, t.source_slice.end_column), (1, 7));
-        let s = if let BasicTokenData::Identifier(x) = t.data { x } else { String::map_str("-grr-") };
-        assert_eq!(s.as_str(), "best");
+        assert_eq!(t.data.unwrap_identifier_data().as_str(), "best");
+    }
+
+    #[test]
+    #[should_panic(expected = "expecting Identifier, not")]
+    fn unwrap_identifier_data_from_dot() {
+        BasicTokenData::Dot.unwrap_identifier_data();
     }
 
     #[test]
@@ -779,6 +787,22 @@ mod tests {
         assert_eq!(t.data, PrimaryExpr::Identifier(String::map_str("foo")));
         assert_eq!((t.source_slice.start_line, t.source_slice.start_column), (1, 1));
         assert_eq!((t.source_slice.end_line, t.source_slice.end_column), (1, 4));
+    }
+
+    #[test]
+    fn dot_as_primary_expr() {
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 256];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let src = Source::new(" .bar", "-");
+        let mut p = Parser::new(&src, &xc);
+        let e = p.parse_primary_expr().unwrap_err();
+        assert_eq!(*e.get_data(), ParseErrorData::UnexpectedToken);
+        assert_eq!(e.get_msg(), "identifier expected at 1:2");
     }
 
     #[test]
