@@ -73,6 +73,10 @@ impl<'a> ExecutionContext<'a> {
         self.log_stream
     }
 
+    pub fn set_log_level(&mut self, new_level: LogLevel) {
+        self.log_level = new_level;
+    }
+
     pub fn get_log_level(&self) -> LogLevel {
         self.log_level
     }

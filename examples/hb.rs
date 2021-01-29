@@ -31,12 +31,16 @@ use halfbit::data_cell::DynDataCell;
 use halfbit::data_cell::DataCellOps;
 //use halfbit::data_cell::DataCellOpsExtra;
 use halfbit::data_cell::AttrComputeError;
+use halfbit::data_cell::expr::Source;
+use halfbit::data_cell::expr::Parser;
+use halfbit::data_cell::expr::PostfixExpr;
+use halfbit::data_cell::expr::BasicTokenType;
 
 #[derive(Debug)]
 struct Invocation {
     verbose: bool,
     items: Vec<StdString>,
-    attributes: Vec<StdString>,
+    expressions: Vec<StdString>,
 }
 
 struct Item<'a> {
@@ -122,12 +126,13 @@ fn process_args(args: Vec<StdString>) -> Invocation {
         .arg(clap::Arg::with_name("items")
                 .help("item(s) to process (file paths for now)")
                 .multiple(true))
-        .arg(clap::Arg::with_name("attr")
-                .short("a")
-                .long("attr")
-                .help("computes given attributes")
+        .arg(clap::Arg::with_name("eval")
+                .short("e")
+                .long("eval")
+                .help("computes given expressions for each item")
                 .takes_value(true)
-                .multiple(true))
+                .multiple(true)
+                .number_of_values(1))
         .get_matches_from(args);
 
     let inv = Invocation {
@@ -138,8 +143,8 @@ fn process_args(args: Vec<StdString>) -> Invocation {
             } else {
                 Vec::new()
             },
-        attributes:
-            if let Some(values) = m.values_of("attr") {
+        expressions:
+            if let Some(values) = m.values_of("eval") {
                 values.map(|x| StdString::from(x)).collect()
             } else {
                 Vec::new()
@@ -373,35 +378,52 @@ fn process_item<'a, 'x>(
         Ok(b) => b.into(),
         Err((e, cell)) => {
             log_error!(xc, "error:{:?}:{:?}", cell.item.name, e);
-            status.attributes_failed_to_compute += invocation.attributes.len();
+            status.attributes_failed_to_compute += invocation.expressions.len();
             return status;
         }
     };
 
-    for attr in &invocation.attributes {
+    for expr in &invocation.expressions {
         if invocation.verbose {
-            log_info!(xc, "computing attribute {:?} for item {:?}", attr, item_name);
+            log_info!(xc, "computing expression {:?} for item {:?}", expr, item_name);
         }
-        match root.compute_attr(attr, xc) {
+        match root.compute_attr(expr, xc) {
             Ok(av) => {
-                println!("{:?}\t{}\t{}", item_name, attr, av);
+                println!("{:?}\t{}\t{}", item_name, expr, av);
                 status.attributes_computed_ok += 1;
             },
             Err(e) => {
                 match e {
                     AttrComputeError::NotApplicable => {
                         status.attributes_not_applicable += 1;
-                        log_warn!(xc, "warning:{:?}:{:?}:{}", item_name, attr, e);
+                        log_warn!(xc, "warning:{:?}:{:?}:{}", item_name, expr, e);
                     },
                     _ => {
                         status.attributes_failed_to_compute += 1;
-                        log_error!(xc, "error:{:?}:{:?}:{}", item_name, attr, e);
+                        log_error!(xc, "error:{:?}:{:?}:{}", item_name, expr, e);
                     }
                 }
             },
         }
     }
     status
+}
+
+/* parse_eval_expr **********************************************************/
+fn parse_eval_expr<'a>(
+    text: &str,
+    xc: &mut ExecutionContext<'a>,
+) -> Result<PostfixExpr<'a>, u8> {
+    let s = Source::new(text, "eval-expression-arg");
+    let mut p = Parser::new(&s, &xc);
+    p.parse_postfix_expr()
+        .and_then(|x|
+            p.expect_token(BasicTokenType::End.to_bitmap())
+                .map(|_e| x.unwrap_data()))
+        .map_err(|e| {
+            log_error!(xc, "error in expression: {}\nerror: {}", text, e.get_msg());
+            64
+        })
 }
 
 /* run **********************************************************************/
@@ -413,15 +435,19 @@ fn run(
         log_info!(xc, "lib: {}", halfbit::lib_name());
     }
     let mut summary = ProcessingStatus::new();
+    let mut expressions = Vec::new();
+    for expr_text in &invocation.expressions[..] {
+        expressions.push(parse_eval_expr(expr_text.as_str(), xc)?);
+    }
     for item in &invocation.items {
         summary.add(&process_item(item, invocation, xc));
     }
     if invocation.verbose {
         log_info!(xc, "accessible items: {}", summary.accessible_items);
         log_info!(xc, "inaccessible items: {}", summary.inaccessible_items);
-        log_info!(xc, "attributes computed ok: {}", summary.attributes_computed_ok);
-        log_info!(xc, "attributes not applicable: {}", summary.attributes_not_applicable);
-        log_info!(xc, "attributes failed to compute: {}", summary.attributes_failed_to_compute);
+        log_info!(xc, "expressions computed ok: {}", summary.attributes_computed_ok);
+        log_info!(xc, "expressions not applicable: {}", summary.attributes_not_applicable);
+        log_info!(xc, "expressions failed to compute: {}", summary.attributes_failed_to_compute);
     }
     let rc = 0_u8
         | if summary.attributes_not_applicable != 0 { 1 } else { 0 }

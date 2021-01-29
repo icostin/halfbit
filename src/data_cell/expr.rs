@@ -265,6 +265,12 @@ impl<'s> SourceSlice<'s> {
     }
 }
 
+impl<'s, T> Token<'s, T> {
+    pub fn unwrap_data(self) -> T {
+        self.data
+    }
+}
+
 impl<'s, 't> Parser<'s, 't> {
 
     pub fn new(src: &'s Source<'s>, xc: &ExecutionContext<'t>) -> Self {
