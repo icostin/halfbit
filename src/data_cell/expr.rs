@@ -126,6 +126,16 @@ pub struct PostfixExpr<'a> {
     items: Vector<'a, PostfixItem<'a>>,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Expr<'a> {
+    Postfix(PostfixExpr<'a>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ExprList<'a> {
+    items: Vector<'a, Expr<'a>>,
+}
+
 pub struct Parser<'s, 't> {
     source: &'s Source<'s>,
     exectx: ExecutionContext<'t>,
@@ -246,6 +256,21 @@ impl<'t> BasicTokenData<'t> {
     }
 }
 
+impl<'t> From<PostfixExpr<'t>> for Expr<'t> {
+    fn from(pe: PostfixExpr<'t>) -> Expr<'t> {
+        Expr::Postfix(pe)
+    }
+}
+
+impl<'s, 't> From<Token<'s, PostfixExpr<'t>>> for Token<'s, Expr<'t>> {
+    fn from(src: Token<'s, PostfixExpr<'t>>) -> Self {
+        Token {
+            data: src.data.into(),
+            source_slice: src.source_slice,
+        }
+    }
+}
+
 impl<'s> Source<'s> {
     pub fn new(content: &'s str, name: &'s str) -> Self {
         Source { content, name }
@@ -266,6 +291,9 @@ impl<'s> SourceSlice<'s> {
 }
 
 impl<'s, T> Token<'s, T> {
+    pub fn to_parts(self) -> (T, SourceSlice<'s>) {
+        (self.data, self.source_slice)
+    }
     pub fn unwrap_data(self) -> T {
         self.data
     }
@@ -513,6 +541,12 @@ impl<'s, 't> Parser<'s, 't> {
             data: pfx_expr,
             source_slice: ss,
         })
+    }
+
+    pub fn parse_expr(
+        &mut self,
+    ) -> Result<Token<'s, Expr<'t>>, ParseError<'t>> {
+        Ok(self.parse_postfix_expr()?.into())
     }
 }
 

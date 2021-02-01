@@ -35,6 +35,10 @@ use halfbit::data_cell::expr::Source;
 use halfbit::data_cell::expr::Parser;
 use halfbit::data_cell::expr::PostfixExpr;
 use halfbit::data_cell::expr::BasicTokenType;
+//use halfbit::data_cell::expr::ParseError;
+
+#[derive(Copy, Clone, Debug)]
+struct ExitCode(u8);
 
 #[derive(Debug)]
 struct Invocation {
@@ -50,6 +54,29 @@ struct Item<'a> {
 struct ItemCell<'a, 'b> {
     item: &'b mut Item<'a>
 }
+
+struct ProcessingStatus {
+    accessible_items: usize,
+    inaccessible_items: usize,
+    attributes_computed_ok: usize,
+    attributes_not_applicable: usize,
+    attributes_failed_to_compute: usize,
+}
+
+impl ExitCode {
+    pub fn new(code: u8) -> Self {
+        Self(code)
+    }
+    pub fn to_result(&self) -> Result<(), ExitCode> {
+        if self.0 == 0 {
+            Ok(())
+        } else {
+            Err(*self)
+        }
+    }
+}
+
+
 impl<'a, 'b> Debug for ItemCell<'a, 'b> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "ItemCell({:?})", self.item.name)
@@ -85,14 +112,6 @@ impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
     }
 }
 
-struct ProcessingStatus {
-    accessible_items: usize,
-    inaccessible_items: usize,
-    attributes_computed_ok: usize,
-    attributes_not_applicable: usize,
-    attributes_failed_to_compute: usize,
-}
-
 impl ProcessingStatus {
     pub fn new () -> Self {
         ProcessingStatus {
@@ -111,7 +130,6 @@ impl ProcessingStatus {
         self.attributes_failed_to_compute += other.attributes_failed_to_compute;
     }
 }
-
 
 /* process_args *************************************************************/
 fn process_args(args: Vec<StdString>) -> Invocation {
@@ -413,7 +431,7 @@ fn process_item<'a, 'x>(
 fn parse_eval_expr<'a>(
     text: &str,
     xc: &mut ExecutionContext<'a>,
-) -> Result<PostfixExpr<'a>, u8> {
+) -> Result<PostfixExpr<'a>, ExitCode> {
     let s = Source::new(text, "eval-expression-arg");
     let mut p = Parser::new(&s, &xc);
     p.parse_postfix_expr()
@@ -422,7 +440,7 @@ fn parse_eval_expr<'a>(
                 .map(|_e| x.unwrap_data()))
         .map_err(|e| {
             log_error!(xc, "error in expression: {}\nerror: {}", text, e.get_msg());
-            64
+            ExitCode::new(64)
         })
 }
 
@@ -430,7 +448,7 @@ fn parse_eval_expr<'a>(
 fn run(
     invocation: &Invocation,
     xc: &mut ExecutionContext<'_>
-) -> Result<(), u8> {
+) -> Result<(), ExitCode> {
     if invocation.verbose {
         log_info!(xc, "lib: {}", halfbit::lib_name());
     }
@@ -456,12 +474,10 @@ fn run(
         | if xc.get_logging_error_mask() != 0 { 8 } else { 0 }
         | 0_u8;
 
-    if rc == 0 {
-        Ok(())
-    } else {
+    if rc != 0 {
         log_error!(xc, "completed with errors");
-        Err(rc)
     }
+    ExitCode::new(rc).to_result()
 }
 
 /* main *********************************************************************/
@@ -478,8 +494,8 @@ fn main() {
     );
     run(&invocation, &mut xc)
     .unwrap_or_else(|e| {
-        log_debug!(xc, "* exiting with code {}", e);
-        std::process::exit(e as i32);
+        log_debug!(xc, "* exiting with code {}", e.0);
+        std::process::exit(e.0 as i32);
     });
 }
 
