@@ -33,7 +33,7 @@ use halfbit::data_cell::DataCellOps;
 use halfbit::data_cell::AttrComputeError;
 use halfbit::data_cell::expr::Source;
 use halfbit::data_cell::expr::Parser;
-use halfbit::data_cell::expr::PostfixExpr;
+use halfbit::data_cell::expr::Expr;
 use halfbit::data_cell::expr::BasicTokenType;
 //use halfbit::data_cell::expr::ParseError;
 
@@ -431,10 +431,10 @@ fn process_item<'a, 'x>(
 fn parse_eval_expr<'a>(
     text: &str,
     xc: &mut ExecutionContext<'a>,
-) -> Result<PostfixExpr<'a>, ExitCode> {
+) -> Result<Expr<'a>, ExitCode> {
     let s = Source::new(text, "eval-expression-arg");
     let mut p = Parser::new(&s, &xc);
-    p.parse_postfix_expr()
+    p.parse_expr()
         .and_then(|x|
             p.expect_token(BasicTokenType::End.to_bitmap())
                 .map(|_e| x.unwrap_data()))

@@ -12,6 +12,10 @@ use crate::mm::AllocError;
 use crate::error::Error;
 use crate::xc_err;
 
+trait TokenData {
+    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap;
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ParseErrorData {
     ReachedEnd,
@@ -58,6 +62,7 @@ pub enum BasicTokenType {
     End,
     Identifier,
     Dot,
+    Comma,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -98,6 +103,7 @@ pub enum BasicTokenData<'a> {
     //DoubleGreatedThan,
     //Comma,
     Dot,
+    Comma,
     //QuestionMark,
     //Colon,
 }
@@ -166,6 +172,7 @@ impl BasicTokenType {
             BasicTokenType::End => "end-of-file",
             BasicTokenType::Identifier => "identifier",
             BasicTokenType::Dot => "dot",
+            BasicTokenType::Comma => "comma",
         }
     }
     pub fn to_bitmap(&self) -> BasicTokenTypeBitmap {
@@ -180,6 +187,9 @@ impl Display for BasicTokenType {
 }
 
 impl BasicTokenTypeBitmap {
+    pub fn new() -> Self {
+        BasicTokenTypeBitmap(0)
+    }
     pub fn is_empty(&self) -> bool {
         self.0 == 0
     }
@@ -189,12 +199,15 @@ impl BasicTokenTypeBitmap {
     pub fn len(&self) -> u32 {
         self.0.count_ones()
     }
-    pub fn from_list(l: &[BasicTokenType]) -> Self {
-        let mut b = 0_u64;
+    pub fn add_types(&mut self, l: &[BasicTokenType]) {
         for t in l {
-            b |= t.to_bitmap().0;
+            self.0 |= t.to_bitmap().0;
         }
-        BasicTokenTypeBitmap(b)
+    }
+    pub fn from_list(l: &[BasicTokenType]) -> Self {
+        let mut b = Self::new();
+        b.add_types(l);
+        b
     }
     pub fn iter(&self) -> BasicTokenTypeBitmapIterator {
         BasicTokenTypeBitmapIterator {
@@ -243,6 +256,7 @@ impl<'t> BasicTokenData<'t> {
             BasicTokenData::End => BasicTokenType::End,
             BasicTokenData::Identifier(_) => BasicTokenType::Identifier,
             BasicTokenData::Dot => BasicTokenType::Dot,
+            BasicTokenData::Comma => BasicTokenType::Comma,
         }
     }
     pub fn type_str(&self) -> &'static str {
@@ -253,6 +267,32 @@ impl<'t> BasicTokenData<'t> {
             BasicTokenData::Identifier(s) => s,
             _ => { panic!("expecting Identifier, not {:?}", self); }
         }
+    }
+}
+
+impl<'a> TokenData for PrimaryExpr<'a> {
+    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
+        BasicTokenTypeBitmap::from_list(&[
+            BasicTokenType::Identifier,
+        ])
+    }
+}
+
+impl<'a> TokenData for PostfixExpr<'a> {
+    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
+        PrimaryExpr::get_start_basic_token_type_bitmap()
+    }
+}
+
+impl<'a> TokenData for Expr<'a> {
+    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
+        PostfixExpr::get_start_basic_token_type_bitmap()
+    }
+}
+
+impl<'a> TokenData for ExprList<'a> {
+    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
+        Expr::get_start_basic_token_type_bitmap()
     }
 }
 
@@ -287,6 +327,11 @@ impl<'s> Source<'s> {
 impl<'s> SourceSlice<'s> {
     pub fn as_str(&self) -> &'s str {
         &self.source.content[self.start_offset..self.end_offset]
+    }
+    pub fn update_end<'t>(&mut self, tail: &SourceSlice<'t>) {
+        self.end_offset = tail.end_offset;
+        self.end_line = tail.end_line;
+        self.end_column = tail.end_column;
     }
 }
 
@@ -450,6 +495,10 @@ impl<'s, 't> Parser<'s, 't> {
                 self.consume_char(c);
                 BasicTokenData::Dot
             },
+            ',' => {
+                self.consume_char(c);
+                BasicTokenData::Comma
+            },
             _ => {
                 let cp = c.codepoint;
                 self.consume_char(c);
@@ -497,6 +546,14 @@ impl<'s, 't> Parser<'s, 't> {
         Ok(self.expect_token(BasicTokenType::Identifier.to_bitmap())?.data.unwrap_identifier_data())
     }
 
+    pub fn is_next_token_matching(
+        &mut self,
+        desired: BasicTokenTypeBitmap,
+    ) -> Result<bool, ParseError<'t>> {
+        let t = self.preview_next_token()?;
+        Ok(desired.contains(t.data.to_type()))
+    }
+
     pub fn get_token_matching_types(
         &mut self,
         desired: BasicTokenTypeBitmap,
@@ -531,6 +588,7 @@ impl<'s, 't> Parser<'s, 't> {
             root: PostfixRoot::Primary(self.parse_primary_expr()?.data),
             items: self.exectx.vector(),
         };
+        self.end_slice_here(&mut ss);
         while let Some(_dot) = self.get_token_matching_types(
             BasicTokenType::Dot.to_bitmap())? {
             let id_str = self.get_identifier_str()?;
@@ -548,6 +606,31 @@ impl<'s, 't> Parser<'s, 't> {
     ) -> Result<Token<'s, Expr<'t>>, ParseError<'t>> {
         Ok(self.parse_postfix_expr()?.into())
     }
+
+    pub fn parse_expr_list(
+        &mut self,
+    ) -> Result<Token<'s, ExprList<'t>>, ParseError<'t>> {
+        let mut ss = self.here();
+        let mut iv = self.exectx.vector();
+        {
+            let t = self.parse_expr()?;
+            iv.push(t.data)?;
+            ss.update_end(&t.source_slice);
+        }
+        while let Some(_comma) = self.get_token_matching_types(
+            BasicTokenType::Comma.to_bitmap())? {
+            let t = self.parse_expr()?;
+            iv.push(t.data)?;
+            ss.update_end(&t.source_slice);
+        }
+        Ok(Token{
+            data: ExprList {
+                items: iv
+            },
+            source_slice: ss,
+        })
+    }
+
 }
 
 #[cfg(test)]
@@ -858,10 +941,11 @@ mod tests {
         let mut p = Parser::new(&src, &xc);
         let t = p.parse_postfix_expr().unwrap();
         assert_eq!(t.source_slice.as_str(), "foo .bar");
+        assert_eq!(p.get_identifier_str().unwrap().as_str(), "baz");
     }
 
     #[test]
-    fn postfix_dot_number() {
+    fn postfix_dot_dot() {
         use crate::mm::BumpAllocator;
         use crate::mm::Allocator;
         use crate::io::stream::NULL_STREAM;
@@ -875,6 +959,23 @@ mod tests {
         assert_eq!(*e.get_data(), ParseErrorData::UnexpectedToken);
         assert_eq!(e.get_msg(), "expecting [identifier] not dot at 1:12");
 
+    }
+
+    #[test]
+    fn expr_list_2_items() {
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::LogLevel;
+        let mut buffer = [0; 2048];
+        let a = BumpAllocator::new(&mut buffer);
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        let src = Source::new("foo .bar , \nmoo\n. mar baz", "-");
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_expr_list().unwrap();
+        extern crate std; use std::dbg; dbg!(t.source_slice.as_str());
+        assert_eq!(t.data.items.len(), 2);
+        assert_eq!(t.source_slice.as_str(), "foo .bar , \nmoo\n. mar");
     }
 
 }
