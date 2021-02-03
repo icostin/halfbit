@@ -137,6 +137,26 @@ impl<'a, T> Vector<'a, T> {
         Ok(())
     }
 
+    pub fn append_vector(
+        &mut self,
+        tail: Vector<'a, T>
+    ) -> Result<(), AllocError> {
+        self.reserve(tail.len())?;
+        unsafe {
+            core::ptr::copy(
+                tail.as_slice().as_ptr(),
+                self.ptr.as_ptr().offset(self.len as isize),
+                tail.len());
+            tail.allocator.free(
+                tail.ptr.cast::<u8>(),
+                NonZeroUsize::new(core::mem::size_of::<T>() * tail.cap).unwrap(),
+                Pow2Usize::new(core::mem::align_of::<T>()).unwrap()
+            );
+            core::mem::forget(tail)
+        }
+        Ok(())
+    }
+
     pub fn from_slice(
         allocator: AllocatorRef<'a>,
         src: &[T]

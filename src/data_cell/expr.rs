@@ -206,8 +206,7 @@ impl BasicTokenTypeBitmap {
     }
     pub fn from_list(l: &[BasicTokenType]) -> Self {
         let mut b = Self::new();
-        b.add_types(l);
-        b
+        b.add_types(l); b
     }
     pub fn iter(&self) -> BasicTokenTypeBitmapIterator {
         BasicTokenTypeBitmapIterator {
@@ -263,9 +262,8 @@ impl<'t> BasicTokenData<'t> {
         self.to_type().name()
     }
     pub fn unwrap_identifier_data(self) -> String<'t> {
-        match self {
-            BasicTokenData::Identifier(s) => s,
-            _ => { panic!("expecting Identifier, not {:?}", self); }
+        if let BasicTokenData::Identifier(s) = self { s } else {
+            panic!("expecting Identifier, not {:?}", self);
         }
     }
 }
@@ -308,6 +306,12 @@ impl<'s, 't> From<Token<'s, PostfixExpr<'t>>> for Token<'s, Expr<'t>> {
             data: src.data.into(),
             source_slice: src.source_slice,
         }
+    }
+}
+
+impl<'s> ExprList<'s> {
+    pub fn unwrap_items(self) -> Vector<'s, Expr<'s>> {
+        self.items
     }
 }
 

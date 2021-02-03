@@ -427,17 +427,16 @@ fn process_item<'a, 'x>(
     status
 }
 
-/* parse_eval_expr **********************************************************/
-fn parse_eval_expr<'a>(
+fn parse_eval_expr_list<'a>(
     text: &str,
     xc: &mut ExecutionContext<'a>,
-) -> Result<Expr<'a>, ExitCode> {
+) -> Result<Vector<'a, Expr<'a>>, ExitCode> {
     let s = Source::new(text, "eval-expression-arg");
     let mut p = Parser::new(&s, &xc);
-    p.parse_expr()
+    p.parse_expr_list()
         .and_then(|x|
             p.expect_token(BasicTokenType::End.to_bitmap())
-                .map(|_e| x.unwrap_data()))
+                .map(|_e| x.unwrap_data().unwrap_items()))
         .map_err(|e| {
             log_error!(xc, "error in expression: {}\nerror: {}", text, e.get_msg());
             ExitCode::new(64)
@@ -453,9 +452,12 @@ fn run(
         log_info!(xc, "lib: {}", halfbit::lib_name());
     }
     let mut summary = ProcessingStatus::new();
-    let mut expressions = Vec::new();
+    let mut expressions = xc.vector();
     for expr_text in &invocation.expressions[..] {
-        expressions.push(parse_eval_expr(expr_text.as_str(), xc)?);
+        if let Err(ae) = expressions.append_vector(parse_eval_expr_list(expr_text.as_str(), xc)?) {
+            log_error!(xc, "failed to allocate memory for parsing eval expressions: {:?}", ae);
+            return Err(ExitCode::new(16));
+        }
     }
     for item in &invocation.items {
         summary.add(&process_item(item, invocation, xc));
