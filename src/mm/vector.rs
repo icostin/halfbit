@@ -152,6 +152,7 @@ impl<'a, T> Vector<'a, T> {
                 NonZeroUsize::new(core::mem::size_of::<T>() * tail.cap).unwrap(),
                 Pow2Usize::new(core::mem::align_of::<T>()).unwrap()
             );
+            self.len += tail.len;
             core::mem::forget(tail)
         }
         Ok(())

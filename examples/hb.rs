@@ -15,6 +15,7 @@ use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
 use halfbit::mm::String as HbString;
+//use halfbit::mm::Vector as HbVector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOPartialError;
 use halfbit::io::IOPartialResult;
@@ -36,6 +37,7 @@ use halfbit::data_cell::expr::Parser;
 use halfbit::data_cell::expr::Expr;
 use halfbit::data_cell::expr::BasicTokenType;
 //use halfbit::data_cell::expr::ParseError;
+use halfbit::data_cell::Eval;
 
 #[derive(Copy, Clone, Debug)]
 struct ExitCode(u8);
@@ -96,12 +98,13 @@ impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
     fn type_name(&self) -> &'static str {
         "stream_data"
     }
-    fn compute_attr<'c, 'x, 'o> (
-        &'c mut self,
+    fn compute_attr<'d, 'x, 'o> (
+        &mut self,
         attr_name: &str,
         xc: &mut ExecutionContext<'x>
     ) -> Result<DataCell<'o>, AttrComputeError<'x>>
-    where 'c: 'o, 'x: 'o {
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        log_debug!(xc, "item queried for {:?}", attr_name);
         match attr_name {
             "first_byte" => extract_first_byte(self.item, xc),
             "first_8_bytes" => first_8_bytes(self.item, xc),
@@ -369,15 +372,13 @@ fn elf_header<'a, 'x>(
 }
 
 fn process_item<'a, 'x>(
-    item_name: &'a str,
-    invocation: &Invocation,
+    item_name: &str,
+    eval_expr_list: &[Expr<'a>],
     xc: &mut ExecutionContext<'x>,
 ) -> ProcessingStatus {
     let mut status = ProcessingStatus::new();
 
-    if invocation.verbose {
-        log_info!(xc, "processing {:?}", item_name);
-    }
+    log_info!(xc, "processing {:?}: evaluating {:?}", item_name, eval_expr_list);
     let mut f = match std::fs::File::open(item_name) {
         Ok(f) => {
             status.accessible_items = 1;
@@ -392,20 +393,19 @@ fn process_item<'a, 'x>(
         name: item_name,
         stream: &mut f,
     };
-    let mut root: DynDataCell = match xc.to_box(ItemCell{ item: &mut item }) {
+    let root: DynDataCell = match xc.to_box(ItemCell{ item: &mut item }) {
         Ok(b) => b.into(),
         Err((e, cell)) => {
             log_error!(xc, "error:{:?}:{:?}", cell.item.name, e);
-            status.attributes_failed_to_compute += invocation.expressions.len();
+            status.attributes_failed_to_compute += eval_expr_list.len();
             return status;
         }
     };
+    let mut root = DataCell::Dyn(root);
 
-    for expr in &invocation.expressions {
-        if invocation.verbose {
-            log_info!(xc, "computing expression {:?} for item {:?}", expr, item_name);
-        }
-        match root.compute_attr(expr, xc) {
+    for expr in eval_expr_list {
+        log_info!(xc, "computing expression {:?} for item {:?}", expr, item_name);
+        match expr.eval_on_cell(&mut root, xc) {
             Ok(av) => {
                 println!("{:?}\t{}\t{}", item_name, expr, av);
                 status.attributes_computed_ok += 1;
@@ -459,8 +459,10 @@ fn run(
             return Err(ExitCode::new(16));
         }
     }
+    log_debug!(xc, "expressions: {:?}", expressions);
+
     for item in &invocation.items {
-        summary.add(&process_item(item, invocation, xc));
+        summary.add(&process_item(item, expressions.as_slice(), xc));
     }
     if invocation.verbose {
         log_info!(xc, "accessible items: {}", summary.accessible_items);

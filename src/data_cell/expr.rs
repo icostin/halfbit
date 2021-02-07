@@ -128,8 +128,8 @@ pub enum PostfixItem<'a> {
 
 #[derive(Debug, PartialEq)]
 pub struct PostfixExpr<'a> {
-    root: PostfixRoot<'a>,
-    items: Vector<'a, PostfixItem<'a>>,
+    pub root: PostfixRoot<'a>,
+    pub items: Vector<'a, PostfixItem<'a>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -268,11 +268,29 @@ impl<'t> BasicTokenData<'t> {
     }
 }
 
+impl<'t> Display for BasicTokenData<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            BasicTokenData::End => "<end-of-file>".fmt(f),
+            BasicTokenData::Dot => "'.'".fmt(f),
+            BasicTokenData::Comma => "','".fmt(f),
+            BasicTokenData::Identifier(s) => s.fmt(f),
+        }
+    }
+}
+
 impl<'a> TokenData for PrimaryExpr<'a> {
     fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
         BasicTokenTypeBitmap::from_list(&[
             BasicTokenType::Identifier,
         ])
+    }
+}
+impl<'t> Display for PrimaryExpr<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            PrimaryExpr::Identifier(s) => s.fmt(f),
+        }
     }
 }
 
@@ -282,21 +300,55 @@ impl<'a> TokenData for PostfixExpr<'a> {
     }
 }
 
+impl<'t> Display for PostfixRoot<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            PostfixRoot::Primary(pe) => pe.fmt(f),
+        }
+    }
+}
+
+impl<'t> Display for PostfixItem<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            PostfixItem::Property(s) => write!(f, ".{}", s),
+        }
+    }
+}
+
+impl<'t> Display for PostfixExpr<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", self.root)?;
+        for i in self.items.as_slice() {
+            write!(f, "{}", i)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> TokenData for Expr<'a> {
     fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
         PostfixExpr::get_start_basic_token_type_bitmap()
     }
 }
 
-impl<'a> TokenData for ExprList<'a> {
-    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
-        Expr::get_start_basic_token_type_bitmap()
-    }
-}
-
 impl<'t> From<PostfixExpr<'t>> for Expr<'t> {
     fn from(pe: PostfixExpr<'t>) -> Expr<'t> {
         Expr::Postfix(pe)
+    }
+}
+
+impl<'t> Display for Expr<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Expr::Postfix(pfe) => pfe.fmt(f),
+        }
+    }
+}
+
+impl<'a> TokenData for ExprList<'a> {
+    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
+        Expr::get_start_basic_token_type_bitmap()
     }
 }
 
@@ -309,9 +361,23 @@ impl<'s, 't> From<Token<'s, PostfixExpr<'t>>> for Token<'s, Expr<'t>> {
     }
 }
 
-impl<'s> ExprList<'s> {
-    pub fn unwrap_items(self) -> Vector<'s, Expr<'s>> {
+impl<'t> ExprList<'t> {
+    pub fn unwrap_items(self) -> Vector<'t, Expr<'t>> {
         self.items
+    }
+}
+impl<'t> Display for ExprList<'t> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let mut write_sep = false;
+        for e in self.items.as_slice() {
+            if write_sep {
+                write!(f, ", ")?;
+            } else {
+                write_sep = true;
+            }
+            e.fmt(f)?;
+        }
+        Ok(())
     }
 }
 

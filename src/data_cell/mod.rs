@@ -14,6 +14,14 @@ use crate::io::IOPartialError;
 use crate::dyn_box;
 use crate::ExecutionContext;
 
+pub mod expr;
+use expr::Expr;
+use expr::PostfixExpr;
+use expr::PostfixRoot;
+use expr::PrimaryExpr;
+
+use crate::log_debug;
+
 #[derive(PartialEq, Debug)]
 pub enum AttrComputeError<'a> {
     UnknownAttribute,
@@ -21,8 +29,6 @@ pub enum AttrComputeError<'a> {
     Alloc(AllocError),
     IO(IOError<'a>),
 }
-
-pub mod expr;
 
 impl<'a> Display for AttrComputeError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -61,11 +67,12 @@ impl<'a, E> core::convert::From<(AllocError, E)> for AttrComputeError<'a> {
 
 pub trait DataCellOps: Debug + Display + UpperHex {
     fn type_name(&self) -> &'static str;
-    fn compute_attr<'a: 'o, 'x: 'o, 'o>(
-        &'a mut self,
+    fn compute_attr<'d, 'x, 'o> (
+        &mut self,
         _attr_name: &str,
         _xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>> {
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
         Err(AttrComputeError::UnknownAttribute)
     }
 }
@@ -107,6 +114,19 @@ impl<'a> DataCellOps for DataCell<'a> {
             DataCell::CellVector(_) => "cell_vector",
             DataCell::Record(_, _) => "record",
             DataCell::Dyn(v) => v.type_name(),
+        }
+    }
+    fn compute_attr<'d, 'x, 'o> (
+        &mut self,
+        attr_name: &str,
+        xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        match self {
+            DataCell::Dyn(v) => v.compute_attr(attr_name, xc),
+            _ => {
+                Err(AttrComputeError::UnknownAttribute)
+            }
         }
     }
 }
@@ -175,6 +195,94 @@ impl UpperHex for DataCell<'_> {
     }
 }
 
+pub trait Eval {
+
+    fn eval_with_cell_stack<'d, 'x, 'o>(
+        &self,
+        _cell_stack: &mut[DataCell<'d>],
+        _xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o;
+
+    fn eval_on_cell<'d, 'x, 'o>(
+        &self,
+        cell: &mut DataCell<'d>,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        self.eval_with_cell_stack(core::slice::from_mut(cell), xc)
+    }
+
+}
+
+impl Eval for PrimaryExpr<'_> {
+    fn eval_with_cell_stack<'d, 'x, 'o>(
+        &self,
+        cell_stack: &mut[DataCell<'d>],
+        xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        match self {
+            PrimaryExpr::Identifier(s) => {
+                let s = s.as_str();
+                for c in cell_stack.rchunks_exact_mut(1) {
+                    let c = &mut c[0];
+                    log_debug!(xc, "querying {:?} for attr {:?}", c, s);
+                    match c.compute_attr(s, xc) {
+                        Ok(v) => {
+                            return Ok(v);
+                        },
+                        Err(e) => {
+                            if e != AttrComputeError::UnknownAttribute {
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+                Err(AttrComputeError::UnknownAttribute)
+            },
+        }
+    }
+}
+
+impl Eval for PostfixRoot<'_> {
+    fn eval_with_cell_stack<'d, 'x, 'o>(
+        &self,
+        cell_stack: &mut[DataCell<'d>],
+        xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        match self {
+            PostfixRoot::Primary(pe) => pe.eval_with_cell_stack(cell_stack, xc),
+        }
+    }
+}
+
+impl Eval for PostfixExpr<'_> {
+    fn eval_with_cell_stack<'d, 'x, 'o>(
+        &self,
+        cell_stack: &mut[DataCell<'d>],
+        xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        let v = self.root.eval_with_cell_stack(cell_stack, xc);
+        //panic!("");
+        v
+    }
+}
+
+impl Eval for Expr<'_> {
+    fn eval_with_cell_stack<'d, 'x, 'o>(
+        &self,
+        cell_stack: &mut[DataCell<'d>],
+        xc: &mut ExecutionContext<'x>
+    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    where Self: 'd, 'd: 'o, 'x: 'o {
+        match self {
+            Expr::Postfix(pfe) => pfe.eval_with_cell_stack(cell_stack, xc),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
