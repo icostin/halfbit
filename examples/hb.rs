@@ -78,7 +78,6 @@ impl ExitCode {
     }
 }
 
-
 impl<'a, 'b> Debug for ItemCell<'a, 'b> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "ItemCell({:?})", self.item.name)
