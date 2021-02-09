@@ -31,7 +31,7 @@ use halfbit::data_cell::DataCell;
 use halfbit::data_cell::DynDataCell;
 use halfbit::data_cell::DataCellOps;
 //use halfbit::data_cell::DataCellOpsExtra;
-use halfbit::data_cell::AttrComputeError;
+use halfbit::data_cell::ComputeError;
 use halfbit::data_cell::expr::Source;
 use halfbit::data_cell::expr::Parser;
 use halfbit::data_cell::expr::Expr;
@@ -97,11 +97,11 @@ impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
     fn type_name(&self) -> &'static str {
         "stream_data"
     }
-    fn compute_attr<'d, 'x, 'o> (
+    fn get_property<'d, 'x, 'o> (
         &mut self,
         attr_name: &str,
         xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where Self: 'd, 'd: 'o, 'x: 'o {
         log_debug!(xc, "item queried for {:?}", attr_name);
         match attr_name {
@@ -109,7 +109,7 @@ impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
             "first_8_bytes" => first_8_bytes(self.item, xc),
             "tof_ids" => identify_top_of_file_records(self.item, xc),
             "elf_header" => elf_header(self.item, xc),
-            _ => Err(AttrComputeError::UnknownAttribute)
+            _ => Err(ComputeError::UnknownAttribute)
         }
     }
 }
@@ -182,23 +182,23 @@ fn process_args(args: Vec<StdString>) -> Invocation {
 fn extract_first_byte <'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+) -> Result<DataCell<'x>, ComputeError<'x>> {
     item.stream.seek(SeekFrom::Start(0), xc)
     .map_err(|e| IOPartialError::from_error_and_size(e, 0))
     .and_then(|_| item.stream.read_u8(xc))
     .map(|v| DataCell::U64(v as u64))
     .map_err(|e|
         if e.get_error_code() == IOErrorCode::UnexpectedEnd {
-            AttrComputeError::NotApplicable
+            ComputeError::NotApplicable
         } else {
-            AttrComputeError::IO(e.to_error())
+            ComputeError::IO(e.to_error())
         })
 }
 
 fn first_8_bytes<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+) -> Result<DataCell<'x>, ComputeError<'x>> {
     let mut buf = [0_u8; 8];
     let n = item.stream.seek_read(0, &mut buf, xc)?;
     Ok(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &buf[0..n])?))
@@ -207,7 +207,7 @@ fn first_8_bytes<'a, 'x>(
 fn identify_top_of_file_records<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+) -> Result<DataCell<'x>, ComputeError<'x>> {
     let mut ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
     let mut tof_buffer = [0_u8; 0x40];
     let tof_len = item.stream.seek_read(0, &mut tof_buffer, xc)?;
@@ -238,7 +238,7 @@ fn identify_top_of_file_records<'a, 'x>(
             let ver: u32 = int_be_decode(&tof[4..8]).unwrap();
             let mut id = xc.string();
             write!(id, "qcow{}", ver)
-                .map_err(|_| AttrComputeError::Alloc(AllocError::NotEnoughMemory))?;
+                .map_err(|_| ComputeError::Alloc(AllocError::NotEnoughMemory))?;
             ids.push(DataCell::Identifier(id))?;
         }
     }
@@ -262,7 +262,7 @@ const ELF_HEADER_FIELDS: &[&'static str] = &[
 fn elf_header<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, AttrComputeError<'x>> {
+) -> Result<DataCell<'x>, ComputeError<'x>> {
     let mut eh: Vector<'x, DataCell<'x>> = xc.vector();
     let mut magic = [0_u8; 4];
     item.stream.seek_read(0, &mut magic, xc)?;
@@ -411,7 +411,7 @@ fn process_item<'a, 'x>(
             },
             Err(e) => {
                 match e {
-                    AttrComputeError::NotApplicable => {
+                    ComputeError::NotApplicable => {
                         status.attributes_not_applicable += 1;
                         log_warn!(xc, "warning:{:?}:{:?}:{}", item_name, expr, e);
                     },

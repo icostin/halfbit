@@ -24,63 +24,63 @@ use expr::PrimaryExpr;
 use crate::log_debug;
 
 #[derive(PartialEq, Debug)]
-pub enum AttrComputeError<'a> {
+pub enum ComputeError<'a> {
     UnknownAttribute,
     NotApplicable,
     Alloc(AllocError),
     IO(IOError<'a>),
 }
 
-impl<'a> Display for AttrComputeError<'a> {
+impl<'a> Display for ComputeError<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            AttrComputeError::UnknownAttribute => write!(f, "unknown attribute"),
-            AttrComputeError::NotApplicable => write!(f, "not applicable"),
-            AttrComputeError::Alloc(ae) => write!(f, "{:?}", ae),
-            AttrComputeError::IO(x) => write!(f, "I/O error: {}", x),
+            ComputeError::UnknownAttribute => write!(f, "unknown attribute"),
+            ComputeError::NotApplicable => write!(f, "not applicable"),
+            ComputeError::Alloc(ae) => write!(f, "{:?}", ae),
+            ComputeError::IO(x) => write!(f, "I/O error: {}", x),
         }
     }
 }
 
-impl<'a> core::convert::From<IOError<'a>> for AttrComputeError<'a> {
+impl<'a> core::convert::From<IOError<'a>> for ComputeError<'a> {
     fn from(e: IOError<'a>) -> Self {
-        AttrComputeError::IO(e)
+        ComputeError::IO(e)
     }
 }
 
-impl<'a> core::convert::From<IOPartialError<'a>> for AttrComputeError<'a> {
+impl<'a> core::convert::From<IOPartialError<'a>> for ComputeError<'a> {
     fn from(e: IOPartialError<'a>) -> Self {
-        AttrComputeError::IO(e.to_error())
+        ComputeError::IO(e.to_error())
     }
 }
 
-impl<'a> core::convert::From<AllocError> for AttrComputeError<'a> {
+impl<'a> core::convert::From<AllocError> for ComputeError<'a> {
     fn from(e: AllocError) -> Self {
-        AttrComputeError::Alloc(e)
+        ComputeError::Alloc(e)
     }
 }
 
-impl<'a, E> core::convert::From<(AllocError, E)> for AttrComputeError<'a> {
+impl<'a, E> core::convert::From<(AllocError, E)> for ComputeError<'a> {
     fn from(e: (AllocError, E)) -> Self {
-        AttrComputeError::Alloc(e.0)
+        ComputeError::Alloc(e.0)
     }
 }
 
-impl<'a> core::convert::From<core::fmt::Error> for AttrComputeError<'a> {
+impl<'a> core::convert::From<core::fmt::Error> for ComputeError<'a> {
     fn from(_e: core::fmt::Error) -> Self {
-        AttrComputeError::Alloc(AllocError::OperationFailed)
+        ComputeError::Alloc(AllocError::OperationFailed)
     }
 }
 
 pub trait DataCellOps: Debug + Display + UpperHex {
     fn type_name(&self) -> &'static str;
-    fn compute_attr<'d, 'x, 'o> (
+    fn get_property<'d, 'x, 'o> (
         &mut self,
         _attr_name: &str,
         _xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where Self: 'd, 'd: 'o, 'x: 'o {
-        Err(AttrComputeError::UnknownAttribute)
+        Err(ComputeError::UnknownAttribute)
     }
 }
 
@@ -123,11 +123,11 @@ impl<'a> DataCellOps for DataCell<'a> {
             DataCell::Dyn(v) => v.type_name(),
         }
     }
-    fn compute_attr<'d, 'x, 'o> (
+    fn get_property<'d, 'x, 'o> (
         &mut self,
         attr_name: &str,
         xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'a: 'd, 'd: 'o, 'x: 'o {
         match self {
             DataCell::U64(v) => {
@@ -137,11 +137,11 @@ impl<'a> DataCellOps for DataCell<'a> {
                         write!(s, "{:02X}", v)?;
                         Ok(DataCell::String(s))
                     },
-                    _ => Err(AttrComputeError::UnknownAttribute)
+                    _ => Err(ComputeError::UnknownAttribute)
                 }
             },
-            DataCell::Dyn(v) => v.compute_attr(attr_name, xc),
-            _ => Err(AttrComputeError::UnknownAttribute)
+            DataCell::Dyn(v) => v.get_property(attr_name, xc),
+            _ => Err(ComputeError::UnknownAttribute)
         }
     }
 }
@@ -216,14 +216,14 @@ pub trait Eval {
         &self,
         _cell_stack: &mut[DataCell<'d>],
         _xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'd: 'o, 'x: 'o;
 
     fn eval_on_cell<'d, 'x, 'o>(
         &self,
         cell: &mut DataCell<'d>,
         xc: &mut ExecutionContext<'x>,
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'd: 'o, 'x: 'o {
         self.eval_with_cell_stack(core::slice::from_mut(cell), xc)
     }
@@ -235,7 +235,7 @@ impl Eval for PrimaryExpr<'_> {
         &self,
         cell_stack: &mut[DataCell<'d>],
         xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'd: 'o, 'x: 'o {
         match self {
             PrimaryExpr::Identifier(s) => {
@@ -243,18 +243,18 @@ impl Eval for PrimaryExpr<'_> {
                 for c in cell_stack.rchunks_exact_mut(1) {
                     let c = &mut c[0];
                     log_debug!(xc, "querying {:?} for attr {:?}", c, s);
-                    match c.compute_attr(s, xc) {
+                    match c.get_property(s, xc) {
                         Ok(v) => {
                             return Ok(v);
                         },
                         Err(e) => {
-                            if e != AttrComputeError::UnknownAttribute {
+                            if e != ComputeError::UnknownAttribute {
                                 return Err(e);
                             }
                         }
                     }
                 }
-                Err(AttrComputeError::UnknownAttribute)
+                Err(ComputeError::UnknownAttribute)
             },
         }
     }
@@ -265,7 +265,7 @@ impl Eval for PostfixRoot<'_> {
         &self,
         cell_stack: &mut[DataCell<'d>],
         xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'd: 'o, 'x: 'o {
         match self {
             PostfixRoot::Primary(pe) => pe.eval_with_cell_stack(cell_stack, xc),
@@ -278,12 +278,12 @@ impl Eval for PostfixExpr<'_> {
         &self,
         cell_stack: &mut[DataCell<'d>],
         xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'd: 'o, 'x: 'o {
         let mut v = self.root.eval_with_cell_stack(cell_stack, xc)?;
         for pfi in self.items.as_slice() {
             v = match pfi {
-                PostfixItem::Property(p) => v.compute_attr(p.as_str(), xc)?
+                PostfixItem::Property(p) => v.get_property(p.as_str(), xc)?
             };
         }
         Ok(v)
@@ -295,7 +295,7 @@ impl Eval for Expr<'_> {
         &self,
         cell_stack: &mut[DataCell<'d>],
         xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, AttrComputeError<'x>>
+    ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'd: 'o, 'x: 'o {
         match self {
             Expr::Postfix(pfe) => pfe.eval_with_cell_stack(cell_stack, xc),
@@ -368,9 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn default_compute_attr() {
+    fn default_get_property() {
         let mut xc = ExecutionContext::nop();
-        assert_eq!(AttrComputeError::UnknownAttribute, DataCell::Nothing.compute_attr("zilch", &mut xc).unwrap_err());
+        assert_eq!(ComputeError::UnknownAttribute, DataCell::Nothing.get_property("zilch", &mut xc).unwrap_err());
     }
 
     #[test]
@@ -525,7 +525,7 @@ mod tests {
         extern crate std;
         use std::string::String as StdString;
         let mut s = StdString::new();
-        write!(s, "{}", AttrComputeError::UnknownAttribute).unwrap();
+        write!(s, "{}", ComputeError::UnknownAttribute).unwrap();
         assert!(s.contains("unknown"));
     }
 
@@ -534,7 +534,7 @@ mod tests {
         extern crate std;
         use std::string::String as StdString;
         let mut s = StdString::new();
-        write!(s, "{}", AttrComputeError::NotApplicable).unwrap();
+        write!(s, "{}", ComputeError::NotApplicable).unwrap();
         assert!(s.contains("not applicable"));
     }
 
@@ -543,7 +543,7 @@ mod tests {
         extern crate std;
         use std::string::String as StdString;
         let mut s = StdString::new();
-        write!(s, "{}", AttrComputeError::Alloc(AllocError::NotEnoughMemory)).unwrap();
+        write!(s, "{}", ComputeError::Alloc(AllocError::NotEnoughMemory)).unwrap();
         assert_eq!(s, "NotEnoughMemory");
     }
 
@@ -553,7 +553,7 @@ mod tests {
         use std::string::String as StdString;
         use crate::io::ErrorCode;
         let mut s = StdString::new();
-        write!(s, "{}", AttrComputeError::IO(IOError::with_str(ErrorCode::NoSpace, "zilch"))).unwrap();
+        write!(s, "{}", ComputeError::IO(IOError::with_str(ErrorCode::NoSpace, "zilch"))).unwrap();
         assert_eq!(s, "I/O error: no space (zilch)");
     }
 
@@ -563,7 +563,7 @@ mod tests {
         use std::string::String as StdString;
         use crate::io::ErrorCode;
         let mut s = StdString::new();
-        let ace: AttrComputeError = IOError::with_str(ErrorCode::NoSpace, "zilch").into();
+        let ace: ComputeError = IOError::with_str(ErrorCode::NoSpace, "zilch").into();
         write!(s, "{}", ace).unwrap();
         assert_eq!(s, "I/O error: no space (zilch)");
     }
@@ -574,7 +574,7 @@ mod tests {
         use std::string::String as StdString;
         use crate::io::ErrorCode;
         let mut s = StdString::new();
-        let ace: AttrComputeError = IOPartialError::from_error_and_size(IOError::with_str(ErrorCode::NoSpace, "zilch"), 7).into();
+        let ace: ComputeError = IOPartialError::from_error_and_size(IOError::with_str(ErrorCode::NoSpace, "zilch"), 7).into();
         write!(s, "{}", ace).unwrap();
         assert_eq!(s, "I/O error: no space (zilch)");
     }
@@ -584,7 +584,7 @@ mod tests {
         extern crate std;
         use std::string::String as StdString;
         let mut s = StdString::new();
-        let ace: AttrComputeError = AllocError::NotEnoughMemory.into();
+        let ace: ComputeError = AllocError::NotEnoughMemory.into();
         write!(s, "{}", ace).unwrap();
         assert_eq!(s, "NotEnoughMemory");
     }
@@ -594,7 +594,7 @@ mod tests {
         extern crate std;
         use std::string::String as StdString;
         let mut s = StdString::new();
-        let ace: AttrComputeError = (AllocError::NotEnoughMemory, DataCell::Nothing).into();
+        let ace: ComputeError = (AllocError::NotEnoughMemory, DataCell::Nothing).into();
         write!(s, "{}", ace).unwrap();
         assert_eq!(s, "NotEnoughMemory");
     }
