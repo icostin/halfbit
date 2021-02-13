@@ -16,8 +16,8 @@ pub mod exectx; // execution context
 pub use exectx::ExecutionContext;
 pub use exectx::LogLevel;
 
-pub mod data_cell;
-pub use data_cell::DataCell;
+pub mod data_cell_v0;
+pub use data_cell_v0::DataCell;
 
 pub mod conv; // converters
 
