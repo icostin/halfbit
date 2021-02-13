@@ -167,6 +167,14 @@ impl<'a, T> Vector<'a, T> {
         v.append_from_slice(src)?;
         Ok(v)
     }
+
+    pub fn dup<'b>(
+        &self,
+        allocator: AllocatorRef<'b>,
+    ) -> Result<Vector<'b, T>, AllocError>
+    where T: Copy {
+        Vector::from_slice(allocator, self.as_slice())
+    }
 }
 
 impl<'a, T> Drop for Vector<'a, T> {

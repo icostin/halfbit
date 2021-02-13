@@ -32,11 +32,26 @@ impl<'a> String<'a> {
         let mut buf = [0_u8; 4];
         self.data.append_from_slice(c.encode_utf8(&mut buf).as_bytes())
     }
+    pub fn append_str(
+        &mut self,
+        s: &str,
+    ) -> Result<(), AllocError> {
+        self.data.append_from_slice(s.as_bytes())?;
+        Ok(())
+    }
+    pub fn dup<'b>(
+        &self,
+        allocator: AllocatorRef<'b>,
+    ) -> Result<String<'b>, AllocError> {
+        let mut o = String::new(allocator);
+        o.append_str(self.as_str())?;
+        Ok(o)
+    }
 }
 
 impl FmtWrite for String<'_> {
     fn write_str(&mut self, s: &str) -> FmtResult {
-        self.data.append_from_slice(s.as_bytes())?;
+        self.append_str(s)?;
         Ok(())
     }
 }

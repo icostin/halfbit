@@ -72,6 +72,12 @@ impl<'a> core::convert::From<core::fmt::Error> for ComputeError<'a> {
     }
 }
 
+impl core::convert::From<(AllocError, DataCell<'_>)> for AllocError {
+    fn from(e: (AllocError, DataCell<'_>)) -> AllocError {
+        e.0
+    }
+}
+
 pub trait DataCellOps: Debug + Display + UpperHex {
     fn type_name(&self) -> &'static str;
     fn get_property<'d, 'x, 'o> (
@@ -82,6 +88,10 @@ pub trait DataCellOps: Debug + Display + UpperHex {
     where Self: 'd, 'd: 'o, 'x: 'o {
         Err(ComputeError::UnknownAttribute)
     }
+    fn dup<'x>(
+        &self,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, AllocError>;
 }
 
 pub trait DataCellOpsExtra: DataCellOps {
@@ -125,13 +135,13 @@ impl<'a> DataCellOps for DataCell<'a> {
     }
     fn get_property<'d, 'x, 'o> (
         &mut self,
-        attr_name: &str,
+        property_name: &str,
         xc: &mut ExecutionContext<'x>
     ) -> Result<DataCell<'o>, ComputeError<'x>>
     where 'a: 'd, 'd: 'o, 'x: 'o {
         match self {
             DataCell::U64(v) => {
-                match attr_name {
+                match property_name {
                     "hex2" => {
                         let mut s = xc.string();
                         write!(s, "{:02X}", v)?;
@@ -140,9 +150,48 @@ impl<'a> DataCellOps for DataCell<'a> {
                     _ => Err(ComputeError::UnknownAttribute)
                 }
             },
-            DataCell::Dyn(v) => v.get_property(attr_name, xc),
+            DataCell::Record(_v, f) => {
+                if let Some(_pos) = f.iter().position(|&n| n == property_name) {
+                    panic!("");
+                } else {
+                    Err(ComputeError::UnknownAttribute)
+                }
+            },
+            DataCell::Dyn(v) => v.get_property(property_name, xc),
             _ => Err(ComputeError::UnknownAttribute)
         }
+    }
+
+    fn dup<'x>(
+        &self,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, AllocError> {
+        Ok(match self {
+            DataCell::Nothing => DataCell::Nothing,
+            DataCell::Bool(v) => DataCell::Bool(*v),
+            DataCell::U64(v) => DataCell::U64(*v),
+            DataCell::I64(v) => DataCell::I64(*v),
+            DataCell::String(v) => DataCell::String(v.dup(xc.get_main_allocator())?),
+            DataCell::Identifier(v) => DataCell::Identifier(v.dup(xc.get_main_allocator())?),
+            DataCell::ByteVector(v) => DataCell::ByteVector(v.dup(xc.get_main_allocator())?),
+            DataCell::CellVector(v) => {
+                let mut o = xc.vector();
+                for e in v.as_slice() {
+                    o.push(e.dup(xc)?)?;
+                }
+                DataCell::CellVector(o)
+            },
+            DataCell::Record(v, r) => {
+                let mut o = xc.vector();
+                for e in v.as_slice() {
+                    o.push(e.dup(xc)?)?;
+                }
+                DataCell::Record(o, r)
+            },
+            DataCell::Dyn(v) => {
+                v.dup(xc)?
+            },
+        })
     }
 }
 

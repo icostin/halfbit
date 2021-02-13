@@ -112,6 +112,12 @@ impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
             _ => Err(ComputeError::UnknownAttribute)
         }
     }
+    fn dup<'x>(
+        &self,
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, AllocError> {
+        Err(AllocError::OperationFailed)
+    }
 }
 
 impl ProcessingStatus {
