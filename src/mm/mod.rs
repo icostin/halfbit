@@ -157,6 +157,8 @@ pub use vector::Vector as Vector;
 pub mod string;
 pub use string::String as String;
 
+pub mod rc;
+
 impl<'a> AllocatorRef<'a> {
     pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
         Box::new(self, v)
