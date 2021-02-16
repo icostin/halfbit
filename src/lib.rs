@@ -19,6 +19,8 @@ pub use exectx::LogLevel;
 pub mod data_cell_v0;
 pub use data_cell_v0::DataCell;
 
+pub mod data_cell;
+
 pub mod conv; // converters
 
 
