@@ -169,6 +169,7 @@ mod tests {
                 drop_counter: &drop_count
             });
             assert!(a.is_in_use());
+            assert_eq!(drop_count.load(Ordering::SeqCst), 0);
         }
         assert_eq!(drop_count.load(Ordering::SeqCst), 1);
     }
@@ -229,7 +230,5 @@ mod tests {
         assert_eq!(drop_count, 1);
         assert_eq!(ba.space_left(), 256);
     }
-
-
 
 }
