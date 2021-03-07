@@ -1,5 +1,9 @@
 #![no_std]
+#![feature(unsize)]
+#![feature(unsized_tuple_coercion)]
 #[macro_use]
+
+
 extern crate num_derive;
 extern crate num_traits;
 
