@@ -113,9 +113,9 @@ where T: ?Sized {
         T: Unsize<U>,
         U: ?Sized
     {
-        let r: Rc<'a, U> = Rc { data: rc.data };
+        let data: &RcData<'a, U> = rc.data;
         core::mem::forget(rc);
-        r
+        Rc { data }
     }
 
     pub fn downgrade<'a>(rc: &Rc<'a, T>) -> RcWeak<'a, T> {
@@ -130,7 +130,8 @@ where T: ?Sized {
 impl<'a, T> AsRef<T> for Rc<'a, T> where T: ?Sized {
 
     fn as_ref(&self) -> &T {
-        panic!();
+        let rc_data = unsafe { &mut *self.data.get() };
+        &rc_data.1
     }
 
 }
@@ -360,6 +361,14 @@ mod tests {
 
         assert_eq!(dropometer.load(Ordering::SeqCst), 1);
         assert!(!a.is_in_use());
+    }
+
+    #[test]
+    fn as_ref() {
+        let mut buffer = [0u8; 64];
+        let a = SingleAlloc::new(&mut buffer);
+        let rc = Rc::new(a.to_ref(), 12345_u32).unwrap();
+        assert_eq!(rc.as_ref(), &12345_u32);
     }
 }
 
