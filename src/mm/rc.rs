@@ -139,7 +139,7 @@ impl<'a, T> AsRef<T> for Rc<'a, T> where T: ?Sized {
 impl<'a, T> Borrow<T> for Rc<'a, T> where T: ?Sized {
 
     fn borrow(&self) -> &T {
-        panic!();
+        self.as_ref()
     }
 
 }
@@ -370,5 +370,15 @@ mod tests {
         let rc = Rc::new(a.to_ref(), 12345_u32).unwrap();
         assert_eq!(rc.as_ref(), &12345_u32);
     }
+
+    #[test]
+    fn borrow() {
+        let mut buffer = [0u8; 64];
+        let a = SingleAlloc::new(&mut buffer);
+        let rc = Rc::new(a.to_ref(), 12345_u32).unwrap();
+        let b: &u32 = rc.borrow();
+        assert_eq!(b, &12345_u32);
+    }
+
 }
 
