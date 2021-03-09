@@ -166,7 +166,7 @@ impl<'a, T> Deref for Rc<'a, T> where T: ?Sized {
     type Target = T;
 
     fn deref(&self) -> &T {
-        panic!();
+        self.as_ref()
     }
 
 }
@@ -218,7 +218,10 @@ impl<'a, T> RcWeak<'a, T> where T: ?Sized {
 impl<'a, T> Clone for RcWeak<'a, T> where T: ?Sized {
 
     fn clone(&self) -> RcWeak<'a, T> {
-        panic!();
+        let rc_data = unsafe { &mut *self.data.get() };
+        let mut rc_block = &mut rc_data.0;
+        rc_block.weak += 1;
+        RcWeak { data: self.data }
     }
 
 }
@@ -241,6 +244,7 @@ impl<'a, T> Drop for RcWeak<'a, T> where T: ?Sized {
 mod tests {
     use super::*;
     use crate::mm::SingleAlloc;
+    use crate::mm::BumpAllocator;
     extern crate std;
 
     #[test]
@@ -377,6 +381,40 @@ mod tests {
         let a = SingleAlloc::new(&mut buffer);
         let rc = Rc::new(a.to_ref(), 12345_u32).unwrap();
         let b: &u32 = rc.borrow();
+        assert_eq!(b, &12345_u32);
+    }
+
+    #[test]
+    fn debug_fmt() {
+        let mut buffer = [0u8; 128];
+        let a = BumpAllocator::new(&mut buffer);
+
+        let mut rc1 = Rc::new(a.to_ref(), 123_u32).unwrap();
+        assert_eq!(Rc::strong_count(&rc1), 1);
+        assert_eq!(Rc::weak_count(&rc1), 0);
+        assert!(Rc::get_mut(&mut rc1).is_some());
+
+        let w1 = Rc::downgrade(&rc1);
+        assert_eq!(Rc::strong_count(&rc1), 1);
+        assert_eq!(Rc::weak_count(&rc1), 1);
+        assert!(Rc::get_mut(&mut rc1).is_none());
+
+        let _w2 = w1.clone();
+
+        extern crate std;
+        use core::fmt::Write;
+
+        let mut s = std::string::String::new();
+        write!(s, "{:?}", rc1).unwrap();
+        assert_eq!(s, "Rc[1+2]{123}");
+    }
+
+    #[test]
+    fn deref() {
+        let mut buffer = [0u8; 64];
+        let a = SingleAlloc::new(&mut buffer);
+        let rc = Rc::new(a.to_ref(), 12345_u32).unwrap();
+        let b: &u32 = rc.deref();
         assert_eq!(b, &12345_u32);
     }
 
