@@ -143,7 +143,7 @@ impl<'a, T> Vector<'a, T> {
     ) -> Result<(), AllocError> {
         self.reserve(tail.len())?;
         unsafe {
-            core::ptr::copy(
+            core::ptr::copy_nonoverlapping(
                 tail.as_slice().as_ptr(),
                 self.ptr.as_ptr().offset(self.len as isize),
                 tail.len());
@@ -399,6 +399,35 @@ mod tests {
         v.as_mut_slice()[2] = 7;
         let v2 = Vector::map_slice(&[2_u16, 4, 7, 8]);
         assert_eq!(v, v2);
+    }
+
+    #[test]
+    fn append_vector() {
+        let mut buf1 = [0_u8; 100];
+        let mut buf2 = [0_u8; 100];
+        let a1 = SingleAlloc::new(&mut buf1);
+        let a2 = SingleAlloc::new(&mut buf2);
+        let x1: [u16; 4] = [ 2, 4, 6, 8 ];
+        let x2: [u16; 3] = [ 1, 3, 5 ];
+        let v1 = Vector::from_slice(a1.to_ref(), &x1).unwrap();
+        let mut v2 = Vector::from_slice(a2.to_ref(), &x2).unwrap();
+        v2.append_vector(v1).unwrap();
+        assert_eq!(v2.as_slice(), [ 1_u16, 3_u16, 5_u16, 2_u16, 4_u16, 6_u16, 8_u16 ]);
+        assert!(!a1.is_in_use());
+    }
+
+    #[test]
+    fn dup() {
+        let mut buf1 = [0_u8; 100];
+        let mut buf2 = [0_u8; 100];
+        let a1 = SingleAlloc::new(&mut buf1);
+        let a2 = SingleAlloc::new(&mut buf2);
+        let x1: [u16; 4] = [ 2, 4, 6, 8 ];
+        let v1 = Vector::from_slice(a1.to_ref(), &x1).unwrap();
+        let v2 = v1.dup(a2.to_ref()).unwrap();
+        core::mem::drop(v1);
+        assert_eq!(v2.as_slice(), [ 2_u16, 4, 6, 8 ]);
+        assert!(a2.is_in_use());
     }
 }
 
