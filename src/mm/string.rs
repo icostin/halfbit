@@ -107,5 +107,19 @@ mod tests {
         s.push('\u{101234}').unwrap();
         assert_eq!(s.as_str(), "\u{101234}");
     }
+
+
+    #[test]
+    fn dup() {
+        let mut buffer = [0; 256];
+        let a = BumpAllocator::new(&mut buffer);
+        let b = String::map_str("abc /\\ \"def\"");
+
+        use super::super::NOP_ALLOCATOR;
+        assert_eq!(b.dup(NOP_ALLOCATOR.to_ref()).unwrap_err(), AllocError::UnsupportedOperation);
+
+        let c = b.dup(a.to_ref()).unwrap();
+        assert_eq!(c.as_str(), "abc /\\ \"def\"");
+    }
 }
 
