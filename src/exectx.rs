@@ -268,6 +268,26 @@ mod tests {
     }
 
     #[test]
+    fn log_level() {
+        use crate::io::stream::Zero;
+        let mut log = Zero::new();
+        let mut xc = ExecutionContext::new(
+            NOP_ALLOCATOR.to_ref(),
+            NOP_ALLOCATOR.to_ref(),
+            &mut log,
+            LogLevel::Info,
+        );
+        assert_eq!(xc.get_logging_error_mask(), 0);
+        log_info!(xc, "aaaaa");
+        assert_eq!(xc.get_logging_error_mask(), 8);
+        xc.set_log_level(LogLevel::Error);
+        log_warn!(xc, "aaaaa");
+        assert_eq!(xc.get_logging_error_mask(), 8);
+        log_error!(xc, "aaaaa");
+        assert_eq!(xc.get_logging_error_mask(), 10);
+    }
+
+    #[test]
     fn obtain_string() {
         use core::fmt::Write;
         let mut buf = [0_u8; 0x100];
