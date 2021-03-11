@@ -1,5 +1,5 @@
 use crate::ExecutionContext;
-use crate::mm::Vector;
+//use crate::mm::Vector;
 use crate::dyn_box;
 use crate::io::IOError;
 
@@ -12,20 +12,23 @@ pub enum Error<'e> {
 }
 
 pub trait DataCellOps {
-    fn get_property<'x, 'o>(
+    fn get_property<'x>(
         &mut self,
         _property_name: &str,
         _xc: &mut ExecutionContext<'x>,
-    ) -> Result<DataCell<'o>, Error<'x>>
-    where Self: 'o, 'x: 'o {
+    ) -> Result<DataCell<'x>, Error<'x>> {
         Err(Error::UnknownProperty)
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct NumFmt(u64);
+
 #[derive(Debug)]
 pub enum DataCell<'d> {
     Nothing,
-    Bytes(Vector<'d, u8>),
+    U64(u64, NumFmt),
+    Id(&'d str),
 }
 
 dyn_box!(pub DynDataCell, DataCellOps);
