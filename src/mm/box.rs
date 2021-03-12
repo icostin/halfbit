@@ -1,4 +1,6 @@
 use core::ptr::NonNull;
+use core::ops::Deref;
+use core::ops::DerefMut;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -8,12 +10,12 @@ use super::AllocatorRef;
 use super::AllocError;
 
 #[derive(Debug)]
-pub struct Box<'a, T> {
+pub struct Box<'a, T: ?Sized> {
     allocator: AllocatorRef<'a>,
     ptr: NonNull<T>,
 }
 
-impl<'a, T> Box<'a, T> {
+impl<'a, T: Sized> Box<'a, T> {
     pub fn new(
         allocator: AllocatorRef<'a>,
         value: T,
@@ -34,35 +36,41 @@ impl<'a, T> Box<'a, T> {
             Err(e) => Err((e, value))
         }
     }
+}
+
+impl<'a, T: ?Sized> Box<'a, T> {
     pub unsafe fn to_parts(self) -> (AllocatorRef<'a>, NonNull<T>) {
         let x = core::mem::ManuallyDrop::new(self);
         (x.allocator, x.ptr)
     }
 }
 
-impl<'a, T> Drop for Box<'a, T> {
-    fn drop(&mut self) {
-        unsafe{ core::ptr::drop_in_place(self.ptr.as_ptr()); }
-        let size = core::mem::size_of::<T>();
-        if size == 0 { return; }
-        let size = NonZeroUsize::new(size).unwrap();
-        let align = Pow2Usize::new(core::mem::align_of::<T>()).unwrap();
-        unsafe { self.allocator.free(self.ptr.cast::<u8>(), size, align) };
-    }
-}
-
-impl<'a, T> core::ops::Deref for Box<'a, T> {
+impl<'a, T: ?Sized> Deref for Box<'a, T> {
     type Target = T;
     fn deref (&self) -> &Self::Target {
         unsafe { self.ptr.as_ref() }
     }
 }
 
-impl<'a, T> core::ops::DerefMut for Box<'a, T> {
+impl<'a, T: ?Sized> DerefMut for Box<'a, T> {
     fn deref_mut (&mut self) -> &mut Self::Target {
         unsafe { self.ptr.as_mut() }
     }
 }
+
+impl<'a, T: ?Sized> Drop for Box<'a, T> {
+    fn drop(&mut self) {
+        let v: &T = self.deref();
+        let size = core::mem::size_of_val(v);
+        unsafe{ core::ptr::drop_in_place(self.ptr.as_ptr()); }
+        if size != 0 {
+            let size = NonZeroUsize::new(size).unwrap();
+            let align = Pow2Usize::new(core::mem::align_of_val(&v)).unwrap();
+            unsafe { self.allocator.free(self.ptr.cast::<u8>(), size, align) };
+        }
+    }
+}
+
 
 #[macro_export]
 macro_rules! dyn_box {
@@ -120,6 +128,10 @@ mod tests {
     use super::super::no_sup_allocator;
     use super::super::SingleAlloc;
 
+    #[test]
+    fn size_of_val_on_0_sized() {
+        assert_eq!(core::mem::size_of_val(&()), 0);
+    }
     #[test]
     fn zero_sized_boxed_payload_works_without_allocating() {
         let a = no_sup_allocator();
