@@ -1,6 +1,8 @@
 use core::ptr::NonNull;
 use core::ops::Deref;
 use core::ops::DerefMut;
+use core::marker::Unsize;
+use core::fmt;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -9,7 +11,6 @@ use super::Allocator;
 use super::AllocatorRef;
 use super::AllocError;
 
-#[derive(Debug)]
 pub struct Box<'a, T: ?Sized> {
     allocator: AllocatorRef<'a>,
     ptr: NonNull<T>,
@@ -43,6 +44,20 @@ impl<'a, T: ?Sized> Box<'a, T> {
         let x = core::mem::ManuallyDrop::new(self);
         (x.allocator, x.ptr)
     }
+
+    pub fn to_dyn<U>(self) -> Box<'a, U>
+    where
+        T: Unsize<U>,
+        U: ?Sized
+    {
+        let a = self.allocator;
+        let p = self.ptr;
+        core::mem::forget(self);
+        Box {
+            allocator: a,
+            ptr: p,
+        }
+    }
 }
 
 impl<'a, T: ?Sized> Deref for Box<'a, T> {
@@ -71,6 +86,14 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
     }
 }
 
+impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for Box<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let v: &T = self.deref();
+        write!(f, "halfbit::Box(")
+            .and_then(|_| v.fmt(f))
+            .and_then(|_| write!(f, ")"))
+    }
+}
 
 #[macro_export]
 macro_rules! dyn_box {
@@ -241,6 +264,26 @@ mod tests {
         }
         assert_eq!(drop_count, 1);
         assert_eq!(ba.space_left(), 256);
+    }
+
+    #[test]
+    fn to_dyn() {
+        let mut buffer = [0u8; 16];
+        let a = SingleAlloc::new(&mut buffer);
+        {
+            let c: Box<'_, dyn fmt::Debug>;
+            {
+                let b = Box::new(a.to_ref(), 0xAA55u16).unwrap();
+                assert_eq!(*b, 0xAA55u16);
+                assert!(a.is_in_use());
+                c = b.to_dyn();
+            }
+            assert!(a.is_in_use());
+            extern crate std;
+            use std::format;
+            assert_eq!(format!("{:06?}", c), "halfbit::Box(043605)");
+        }
+        assert!(!a.is_in_use());
     }
 
 }
