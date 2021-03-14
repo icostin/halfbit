@@ -9,9 +9,9 @@ use core::ops::Deref;
 use crate::mm::AllocError;
 use crate::mm::Vector;
 use crate::mm::String;
+use crate::mm::Box;
 use crate::io::IOError;
 use crate::io::IOPartialError;
-use crate::dyn_box;
 use crate::ExecutionContext;
 
 pub mod expr;
@@ -102,8 +102,6 @@ pub trait DataCellOpsExtra: DataCellOps {
 
 impl<T: DataCellOps> DataCellOpsExtra for T {}
 
-dyn_box!(pub DynDataCell, DataCellOps);
-
 #[derive(Debug)]
 pub enum DataCell<'a> {
     Nothing,
@@ -115,7 +113,7 @@ pub enum DataCell<'a> {
     ByteVector(Vector<'a, u8>),
     CellVector(Vector<'a, Self>),
     Record(Vector<'a, Self>, &'static [&'static str]),
-    Dyn(DynDataCell<'a>),
+    Dyn(Box<'a, dyn DataCellOps + 'a>),
 }
 
 impl<'a> DataCellOps for DataCell<'a> {
@@ -413,7 +411,7 @@ mod tests {
         let mut buffer = [0_u8; 256];
         let a = SingleAlloc::new(&mut buffer);
         let boxed_cell = Box::new(a.to_ref(), DataCell::U64(0x1234)).unwrap();
-        assert_eq!(DataCell::Dyn(DynDataCell::from_box(boxed_cell)).type_name(), "uint64");
+        assert_eq!(DataCell::Dyn(boxed_cell.to_dyn()).type_name(), "uint64");
     }
 
     #[test]
@@ -560,7 +558,7 @@ mod tests {
         let mut buffer = [0_u8; 256];
         let a = SingleAlloc::new(&mut buffer);
         let boxed_cell = Box::new(a.to_ref(), DataCell::U64(0x1001)).unwrap();
-        let mut dyn_cell = DataCell::Dyn(DynDataCell::from_box(boxed_cell));
+        let mut dyn_cell = DataCell::Dyn(boxed_cell.to_dyn());
         let mut s = StdString::new();
         dyn_cell.to_text(&mut s).unwrap();
         assert_eq!(s, "4097");

@@ -1,4 +1,8 @@
 use core::ptr::NonNull;
+use core::ops::Deref;
+use core::ops::DerefMut;
+use core::marker::Unsize;
+use core::fmt;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -7,13 +11,12 @@ use super::Allocator;
 use super::AllocatorRef;
 use super::AllocError;
 
-#[derive(Debug)]
-pub struct Box<'a, T> {
+pub struct Box<'a, T: ?Sized> {
     allocator: AllocatorRef<'a>,
     ptr: NonNull<T>,
 }
 
-impl<'a, T> Box<'a, T> {
+impl<'a, T: Sized> Box<'a, T> {
     pub fn new(
         allocator: AllocatorRef<'a>,
         value: T,
@@ -34,83 +37,61 @@ impl<'a, T> Box<'a, T> {
             Err(e) => Err((e, value))
         }
     }
+}
+
+impl<'a, T: ?Sized> Box<'a, T> {
     pub unsafe fn to_parts(self) -> (AllocatorRef<'a>, NonNull<T>) {
         let x = core::mem::ManuallyDrop::new(self);
         (x.allocator, x.ptr)
     }
-}
 
-impl<'a, T> Drop for Box<'a, T> {
-    fn drop(&mut self) {
-        unsafe{ core::ptr::drop_in_place(self.ptr.as_ptr()); }
-        let size = core::mem::size_of::<T>();
-        if size == 0 { return; }
-        let size = NonZeroUsize::new(size).unwrap();
-        let align = Pow2Usize::new(core::mem::align_of::<T>()).unwrap();
-        unsafe { self.allocator.free(self.ptr.cast::<u8>(), size, align) };
+    pub fn to_dyn<U>(self) -> Box<'a, U>
+    where
+        T: Unsize<U>,
+        U: ?Sized
+    {
+        let a = self.allocator;
+        let p = self.ptr;
+        core::mem::forget(self);
+        Box {
+            allocator: a,
+            ptr: p,
+        }
     }
 }
 
-impl<'a, T> core::ops::Deref for Box<'a, T> {
+impl<'a, T: ?Sized> Deref for Box<'a, T> {
     type Target = T;
     fn deref (&self) -> &Self::Target {
         unsafe { self.ptr.as_ref() }
     }
 }
 
-impl<'a, T> core::ops::DerefMut for Box<'a, T> {
+impl<'a, T: ?Sized> DerefMut for Box<'a, T> {
     fn deref_mut (&mut self) -> &mut Self::Target {
         unsafe { self.ptr.as_mut() }
     }
 }
 
-#[macro_export]
-macro_rules! dyn_box {
-    ( $v:vis $box_type: ident, $trait: ident ) => {
-        #[derive(Debug)]
-        $v struct $box_type<'a> {
-            allocator: $crate::mm::AllocatorRef<'a>,
-            ptr: core::ptr::NonNull<dyn $trait + 'a>,
+impl<'a, T: ?Sized> Drop for Box<'a, T> {
+    fn drop(&mut self) {
+        let v: &T = self.deref();
+        let size = core::mem::size_of_val(v);
+        unsafe{ core::ptr::drop_in_place(self.ptr.as_ptr()); }
+        if size != 0 {
+            let size = NonZeroUsize::new(size).unwrap();
+            let align = Pow2Usize::new(core::mem::align_of_val(&v)).unwrap();
+            unsafe { self.allocator.free(self.ptr.cast::<u8>(), size, align) };
         }
-        impl<'a> $box_type<'a> {
-            pub fn from_box<T: 'a + $trait>(b: $crate::mm::Box<'a, T>) -> Self {
-                let (allocator, ptr) = unsafe { b.to_parts() };
-                Self {
-                    allocator,
-                    ptr
-                }
-            }
-        }
-        impl<'a> core::ops::Deref for $box_type<'a> {
-            type Target = dyn $trait + 'a;
-            fn deref(&self) -> &Self::Target {
-                unsafe { self.ptr.as_ref() }
-            }
-        }
-        impl<'a> core::ops::DerefMut for $box_type<'a> {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { self.ptr.as_mut() }
-            }
-        }
-        impl<'a> Drop for $box_type<'a> {
-            fn drop(&mut self) {
-                unsafe {
-                    use $crate::mm::Allocator;
-                    core::ptr::drop_in_place(self.ptr.as_ptr());
-                    let obj_vtable_ptr = &self.ptr as *const core::ptr::NonNull<dyn $trait + 'a> as *const usize;
-                    let vtable = (*obj_vtable_ptr.offset(1) as *const usize);
-                    let (size, align) = (*vtable.offset(1), *vtable.offset(2));
-                    self.allocator.free(self.ptr.cast::<u8>(),
-                                        core::num::NonZeroUsize::new(size).unwrap(),
-                                        $crate::num::Pow2Usize::new(align).unwrap());
-                }
-            }
-        }
-        impl<'a, T: 'a + $trait> From<$crate::mm::Box<'a, T>> for $box_type<'a> {
-            fn from(b: $crate::mm::Box<'a, T>) -> Self {
-                $box_type::from_box(b)
-            }
-        }
+    }
+}
+
+impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for Box<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let v: &T = self.deref();
+        write!(f, "halfbit::Box(")
+            .and_then(|_| v.fmt(f))
+            .and_then(|_| write!(f, ")"))
     }
 }
 
@@ -120,6 +101,10 @@ mod tests {
     use super::super::no_sup_allocator;
     use super::super::SingleAlloc;
 
+    #[test]
+    fn size_of_val_on_0_sized() {
+        assert_eq!(core::mem::size_of_val(&()), 0);
+    }
     #[test]
     fn zero_sized_boxed_payload_works_without_allocating() {
         let a = no_sup_allocator();
@@ -174,7 +159,7 @@ mod tests {
         assert_eq!(drop_count.load(Ordering::SeqCst), 1);
     }
 
-    trait TestDynBoxTrait {
+    trait TestDynBoxTrait: fmt::Debug {
         fn tada(&self) -> u8;
         fn inc(&mut self);
     }
@@ -197,8 +182,6 @@ mod tests {
         }
     }
 
-    dyn_box!(TestDynBox, TestDynBoxTrait);
-
     #[test]
     fn dyn_box_ab() {
         use crate::mm::bump_alloc::BumpAllocator;
@@ -214,8 +197,8 @@ mod tests {
         assert_eq!(a.tada(), 0x5A);
         assert_eq!(b.tada(), 0xAB);
         {
-            let mut tb = TestDynBox::from_box(b);
-            let mut ta = TestDynBox::from_box(a);
+            let mut tb = b.to_dyn::<dyn TestDynBoxTrait>();
+            let mut ta = a.to_dyn::<dyn TestDynBoxTrait>();
             ta.inc();
             tb.inc();
             assert_eq!(tb.tada(), 0xAB);
@@ -229,6 +212,26 @@ mod tests {
         }
         assert_eq!(drop_count, 1);
         assert_eq!(ba.space_left(), 256);
+    }
+
+    #[test]
+    fn to_dyn() {
+        let mut buffer = [0u8; 16];
+        let a = SingleAlloc::new(&mut buffer);
+        {
+            let c: Box<'_, dyn fmt::Debug>;
+            {
+                let b = Box::new(a.to_ref(), 0xAA55u16).unwrap();
+                assert_eq!(*b, 0xAA55u16);
+                assert!(a.is_in_use());
+                c = b.to_dyn();
+            }
+            assert!(a.is_in_use());
+            extern crate std;
+            use std::format;
+            assert_eq!(format!("{:06?}", c), "halfbit::Box(043605)");
+        }
+        assert!(!a.is_in_use());
     }
 
 }
