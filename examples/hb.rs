@@ -28,7 +28,6 @@ use halfbit::log_warn;
 use halfbit::log_error;
 
 use halfbit::data_cell_v0::DataCell;
-use halfbit::data_cell_v0::DynDataCell;
 use halfbit::data_cell_v0::DataCellOps;
 //use halfbit::data_cell_v0::DataCellOpsExtra;
 use halfbit::data_cell_v0::ComputeError;
@@ -398,8 +397,8 @@ fn process_item<'a, 'x>(
         name: item_name,
         stream: &mut f,
     };
-    let root: DynDataCell = match xc.to_box(ItemCell{ item: &mut item }) {
-        Ok(b) => b.into(),
+    let root = match xc.to_box(ItemCell{ item: &mut item }) {
+        Ok(b) => b.to_dyn(),
         Err((e, cell)) => {
             log_error!(xc, "error:{:?}:{:?}", cell.item.name, e);
             status.attributes_failed_to_compute += eval_expr_list.len();

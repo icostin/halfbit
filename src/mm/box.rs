@@ -95,56 +95,6 @@ impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for Box<'a, T> {
     }
 }
 
-#[macro_export]
-macro_rules! dyn_box {
-    ( $v:vis $box_type: ident, $trait: ident ) => {
-        #[derive(Debug)]
-        $v struct $box_type<'a> {
-            allocator: $crate::mm::AllocatorRef<'a>,
-            ptr: core::ptr::NonNull<dyn $trait + 'a>,
-        }
-        impl<'a> $box_type<'a> {
-            pub fn from_box<T: 'a + $trait>(b: $crate::mm::Box<'a, T>) -> Self {
-                let (allocator, ptr) = unsafe { b.to_parts() };
-                Self {
-                    allocator,
-                    ptr
-                }
-            }
-        }
-        impl<'a> core::ops::Deref for $box_type<'a> {
-            type Target = dyn $trait + 'a;
-            fn deref(&self) -> &Self::Target {
-                unsafe { self.ptr.as_ref() }
-            }
-        }
-        impl<'a> core::ops::DerefMut for $box_type<'a> {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { self.ptr.as_mut() }
-            }
-        }
-        impl<'a> Drop for $box_type<'a> {
-            fn drop(&mut self) {
-                unsafe {
-                    use $crate::mm::Allocator;
-                    core::ptr::drop_in_place(self.ptr.as_ptr());
-                    let obj_vtable_ptr = &self.ptr as *const core::ptr::NonNull<dyn $trait + 'a> as *const usize;
-                    let vtable = (*obj_vtable_ptr.offset(1) as *const usize);
-                    let (size, align) = (*vtable.offset(1), *vtable.offset(2));
-                    self.allocator.free(self.ptr.cast::<u8>(),
-                                        core::num::NonZeroUsize::new(size).unwrap(),
-                                        $crate::num::Pow2Usize::new(align).unwrap());
-                }
-            }
-        }
-        impl<'a, T: 'a + $trait> From<$crate::mm::Box<'a, T>> for $box_type<'a> {
-            fn from(b: $crate::mm::Box<'a, T>) -> Self {
-                $box_type::from_box(b)
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,7 +159,7 @@ mod tests {
         assert_eq!(drop_count.load(Ordering::SeqCst), 1);
     }
 
-    trait TestDynBoxTrait {
+    trait TestDynBoxTrait: fmt::Debug {
         fn tada(&self) -> u8;
         fn inc(&mut self);
     }
@@ -232,8 +182,6 @@ mod tests {
         }
     }
 
-    dyn_box!(TestDynBox, TestDynBoxTrait);
-
     #[test]
     fn dyn_box_ab() {
         use crate::mm::bump_alloc::BumpAllocator;
@@ -249,8 +197,8 @@ mod tests {
         assert_eq!(a.tada(), 0x5A);
         assert_eq!(b.tada(), 0xAB);
         {
-            let mut tb = TestDynBox::from_box(b);
-            let mut ta = TestDynBox::from_box(a);
+            let mut tb = b.to_dyn::<dyn TestDynBoxTrait>();
+            let mut ta = a.to_dyn::<dyn TestDynBoxTrait>();
             ta.inc();
             tb.inc();
             assert_eq!(tb.tada(), 0xAB);
