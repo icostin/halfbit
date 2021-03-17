@@ -326,12 +326,12 @@ mod tests {
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
         let init_left = a.space_left();
         {
-            let w;
+            let _w;
             let post_rc_left;
             {
                 let r = xc.rc(1234_u64).unwrap();
                 post_rc_left = a.space_left();
-                w = Rc::downgrade(&r);
+                _w = Rc::downgrade(&r);
                 assert_eq!(*r, 1234);
                 assert!(post_rc_left < init_left);
             }
