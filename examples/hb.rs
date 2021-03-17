@@ -397,7 +397,7 @@ fn process_item<'a, 'x>(
         name: item_name,
         stream: &mut f,
     };
-    let root = match xc.to_box(ItemCell{ item: &mut item }) {
+    let root = match xc.boxed(ItemCell{ item: &mut item }) {
         Ok(b) => b.to_dyn(),
         Err((e, cell)) => {
             log_error!(xc, "error:{:?}:{:?}", cell.item.name, e);

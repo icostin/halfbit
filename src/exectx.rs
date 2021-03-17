@@ -90,7 +90,7 @@ impl<'a> ExecutionContext<'a> {
         self.logging_error_mask |= 1_u8 << (log_level as u32);
     }
 
-    pub fn to_box<T: Sized>(
+    pub fn boxed<T: Sized>(
         &self,
         v: T
     ) -> Result<Box<'a, T>, (AllocError, T)> {
@@ -217,22 +217,22 @@ mod tests {
     }
 
     #[test]
-    fn to_box_happy_case() {
+    fn box_happy_case() {
         let mut buf = [0_u8; 0x100];
         let a = BumpAllocator::new(&mut buf);
         let mut log = NullStream::new();
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
-        let b = xc.to_box(0x12345_u32).unwrap();
+        let b = xc.boxed(0x12345_u32).unwrap();
         assert_eq!(*b, 0x12345_u32);
     }
 
     #[test]
-    fn to_box_fails() {
+    fn box_fails() {
         let mut buf = [0_u8; 3];
         let a = BumpAllocator::new(&mut buf);
         let mut log = NullStream::new();
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
-        let (e, v) = xc.to_box(0x12345_u32).unwrap_err();
+        let (e, v) = xc.boxed(0x12345_u32).unwrap_err();
         assert_eq!(e, AllocError::NotEnoughMemory);
         assert_eq!(v, 0x12345_u32);
     }
