@@ -1,5 +1,6 @@
 use crate::mm::AllocatorRef;
 use crate::mm::Box;
+use crate::mm::Rc;
 use crate::mm::AllocError;
 use crate::mm::Allocator;
 use crate::mm::NOP_ALLOCATOR;
@@ -89,7 +90,7 @@ impl<'a> ExecutionContext<'a> {
         self.logging_error_mask |= 1_u8 << (log_level as u32);
     }
 
-    pub fn to_box<T: Sized>(
+    pub fn boxed<T: Sized>(
         &self,
         v: T
     ) -> Result<Box<'a, T>, (AllocError, T)> {
@@ -101,6 +102,13 @@ impl<'a> ExecutionContext<'a> {
     }
     pub fn string(&self) -> String<'a> {
         String::new(self.get_main_allocator())
+    }
+
+    pub fn rc<T: Sized>(
+        &self,
+        v: T
+    ) -> Result<Rc<'a, T>, (AllocError, T)> {
+        Rc::new(self.get_main_allocator(), v)
     }
 }
 
@@ -209,22 +217,22 @@ mod tests {
     }
 
     #[test]
-    fn to_box_happy_case() {
+    fn box_happy_case() {
         let mut buf = [0_u8; 0x100];
         let a = BumpAllocator::new(&mut buf);
         let mut log = NullStream::new();
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
-        let b = xc.to_box(0x12345_u32).unwrap();
+        let b = xc.boxed(0x12345_u32).unwrap();
         assert_eq!(*b, 0x12345_u32);
     }
 
     #[test]
-    fn to_box_fails() {
+    fn box_fails() {
         let mut buf = [0_u8; 3];
         let a = BumpAllocator::new(&mut buf);
         let mut log = NullStream::new();
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
-        let (e, v) = xc.to_box(0x12345_u32).unwrap_err();
+        let (e, v) = xc.boxed(0x12345_u32).unwrap_err();
         assert_eq!(e, AllocError::NotEnoughMemory);
         assert_eq!(v, 0x12345_u32);
     }
@@ -310,5 +318,32 @@ mod tests {
         assert_eq!(x.len(), 1);
     }
 
+    #[test]
+    fn rc_happy() {
+        let mut buf = [0_u8; 0x100];
+        let a = BumpAllocator::new(&mut buf);
+        let mut log = NullStream::new();
+        let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
+        let init_left = a.space_left();
+        {
+            let _w;
+            let post_rc_left;
+            {
+                let r = xc.rc(1234_u64).unwrap();
+                post_rc_left = a.space_left();
+                _w = Rc::downgrade(&r);
+                assert_eq!(*r, 1234);
+                assert!(post_rc_left < init_left);
+            }
+            assert_eq!(a.space_left(), post_rc_left);
+        }
+        assert_eq!(a.space_left(), init_left);
+    }
+
+    #[test]
+    fn rc_sad() {
+        let xc = ExecutionContext::nop();
+        assert_eq!(xc.rc(1234_u64).unwrap_err(), (AllocError::UnsupportedOperation, 1234_u64));
+    }
 
 }

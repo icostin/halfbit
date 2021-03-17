@@ -158,6 +158,8 @@ pub mod string;
 pub use string::String as String;
 
 pub mod rc;
+pub use rc::Rc as Rc;
+pub use rc::RcWeak as RcWeak;
 
 impl<'a> AllocatorRef<'a> {
     pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
