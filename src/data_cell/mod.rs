@@ -68,11 +68,67 @@ impl<'d> DataCellOps for DataCell<'d> {
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
+    struct Abc();
+    impl fmt::Display for Abc {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "<abc>")
+        }
+    }
+    impl DataCellOps for Abc{}
+
     #[test]
-    fn default_get_property() {
+    fn data_cell_nothing_get_property() {
         let mut xc = ExecutionContext::nop();
         assert_eq!(Error::NotApplicable, DataCell::Nothing.get_property("zilch", &mut xc).unwrap_err());
     }
 
+    #[test]
+    fn num_fmt_default() {
+        let nf = NumFmt::default();
+        assert_eq!(nf.0, 0);
+    }
+
+    #[test]
+    fn default_get_property() {
+        let mut xc = ExecutionContext::nop();
+        assert_eq!(Error::NotApplicable, Abc().get_property("zilch", &mut xc).unwrap_err());
+    }
+
+    #[test]
+    fn data_cell_display() {
+        use crate::mm::BumpAllocator;
+        use crate::mm::Allocator;
+        use crate::io::stream::NULL_STREAM;
+        use crate::exectx::ExecutionContext;
+        use crate::exectx::LogLevel;
+        use core::fmt::Write;
+        let mut buf = [0_u8; 256];
+        let a = BumpAllocator::new(&mut buf);
+        let xc = ExecutionContext::new(
+            a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
+        {
+            let mut s = xc.string();
+            write!(s, "[{}]", DataCell::Nothing).unwrap();
+            assert_eq!(s.as_str(), "[]");
+        }
+        {
+            let mut s = xc.string();
+            write!(s, "[{}]", DataCell::U64(12345, NumFmt::default())).unwrap();
+            assert_eq!(s.as_str(), "[12345]");
+        }
+        {
+            let mut s = xc.string();
+            write!(s, "[{}]", DataCell::Id("abc")).unwrap();
+            assert_eq!(s.as_str(), "[abc]");
+        }
+        {
+            let mut s = xc.string();
+            write!(s, "[{}]", 
+                DataCell::Dyn(Rc::to_dyn(xc.rc(Abc()).unwrap())),
+            ).unwrap();
+            assert_eq!(s.as_str(), "[<abc>]");
+        }
+    }
 }
 
