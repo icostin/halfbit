@@ -45,6 +45,13 @@ impl<'a, T: ?Sized> Box<'a, T> {
         (x.allocator, x.ptr)
     }
 
+    pub unsafe fn from_parts(
+        allocator: AllocatorRef<'a>,
+        ptr: NonNull<T>
+    ) -> Box<'a, T> {
+        Box { allocator, ptr }
+    }
+
     pub fn to_dyn<U>(self) -> Box<'a, U>
     where
         T: Unsize<U>,
@@ -234,4 +241,16 @@ mod tests {
         assert!(!a.is_in_use());
     }
 
+    #[test]
+    fn to_from_parts() {
+        let mut buffer = [0u8; 16];
+        let a = SingleAlloc::new(&mut buffer);
+        let b = Box::new(a.to_ref(), 123_u8).unwrap();
+        let (ar, p) = unsafe { b.to_parts() };
+        {
+            let bb = unsafe { Box::from_parts(ar, p) };
+            assert_eq!(*bb, 123_u8);
+        }
+        assert!(!a.is_in_use());
+    }
 }
