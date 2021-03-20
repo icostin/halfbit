@@ -1,4 +1,7 @@
-.PHONY: dev-build release clean cov install
+.PHONY: quick-test dev-build release clean cov install
+
+quick-test: dev-build
+	./target/debug/examples/hb -e fourty_two makefile
 
 dev-build:
 	cargo test --features=use-libc,use-std

@@ -25,7 +25,7 @@ pub enum ParseErrorData {
     UnexpectedChar(char),
     UnexpectedToken,
 }
-type ParseError<'a> = Error<'a, ParseErrorData>;
+pub type ParseError<'a> = Error<'a, ParseErrorData>;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Source<'s> {

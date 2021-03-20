@@ -1,42 +1,53 @@
 extern crate clap;
 
-use core::fmt::Write as FmtWrite;
-use core::fmt::Debug;
-use core::fmt::Formatter;
-use core::fmt::UpperHex;
-use core::fmt::Display;
+use core::cell::RefCell;
+use core::fmt;
+
 use std::string::String as StdString;
 use std::io::stderr;
 
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
 use halfbit::mm::Allocator;
-use halfbit::mm::AllocError;
+//use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
-use halfbit::mm::String as HbString;
+use halfbit::mm::Rc;
+//use halfbit::mm::String as HbString;
 //use halfbit::mm::Vector as HbVector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOPartialError;
-use halfbit::io::IOPartialResult;
-use halfbit::io::stream::RandomAccessRead;
+//use halfbit::io::IOPartialResult;
+//use halfbit::io::stream::RandomAccessRead;
 use halfbit::io::stream::SeekFrom;
-use halfbit::conv::int_be_decode;
+use halfbit::io::stream::Seek;
+use halfbit::io::stream::Read;
+//use halfbit::conv::int_be_decode;
 use halfbit::log_debug;
 use halfbit::log_info;
 use halfbit::log_warn;
 use halfbit::log_error;
 
+use halfbit::data_cell;
+use halfbit::data_cell::DataCell;
+use halfbit::data_cell::NumFmt;
+use halfbit::data_cell::DataCellOps;
+use halfbit::data_cell::Error;
+use halfbit::data_cell::expr::Source;
+use halfbit::data_cell::expr::Parser;
+use halfbit::data_cell::expr::Expr;
+use halfbit::data_cell::expr::BasicTokenType;
+//use halfbit::data_cell::expr::ParseError;
+use halfbit::data_cell::eval::Eval;
+
+/*
 use halfbit::data_cell_v0::DataCell;
 use halfbit::data_cell_v0::DataCellOps;
 //use halfbit::data_cell_v0::DataCellOpsExtra;
-use halfbit::data_cell_v0::ComputeError;
-use halfbit::data_cell_v0::expr::Source;
-use halfbit::data_cell_v0::expr::Parser;
-use halfbit::data_cell_v0::expr::Expr;
-use halfbit::data_cell_v0::expr::BasicTokenType;
+use halfbit::data_cell_v0::Error;
 //use halfbit::data_cell_v0::expr::ParseError;
 use halfbit::data_cell_v0::Eval;
+*/
 
 #[derive(Copy, Clone, Debug)]
 struct ExitCode(u8);
@@ -50,10 +61,7 @@ struct Invocation {
 
 struct Item<'a> {
     name: &'a str,
-    stream: &'a mut (dyn RandomAccessRead + 'a),
-}
-struct ItemCell<'a, 'b> {
-    item: &'b mut Item<'a>
+    file: RefCell<std::fs::File>,
 }
 
 struct ProcessingStatus {
@@ -77,45 +85,9 @@ impl ExitCode {
     }
 }
 
-impl<'a, 'b> Debug for ItemCell<'a, 'b> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "ItemCell({:?})", self.item.name)
-    }
-}
-impl<'a, 'b> Display for ItemCell<'a, 'b> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Display::fmt("todo", f)
-    }
-}
-impl<'a, 'b> UpperHex for ItemCell<'a, 'b> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Display::fmt("todo", f)
-    }
-}
-impl<'a, 'b> DataCellOps for ItemCell<'a, 'b> {
-    fn type_name(&self) -> &'static str {
-        "stream_data"
-    }
-    fn get_property<'d, 'x, 'o> (
-        &mut self,
-        attr_name: &str,
-        xc: &mut ExecutionContext<'x>
-    ) -> Result<DataCell<'o>, ComputeError<'x>>
-    where Self: 'd, 'd: 'o, 'x: 'o {
-        log_debug!(xc, "item queried for {:?}", attr_name);
-        match attr_name {
-            "first_byte" => extract_first_byte(self.item, xc),
-            "first_8_bytes" => first_8_bytes(self.item, xc),
-            "tof_ids" => identify_top_of_file_records(self.item, xc),
-            "elf_header" => elf_header(self.item, xc),
-            _ => Err(ComputeError::UnknownAttribute)
-        }
-    }
-    fn dup<'x>(
-        &self,
-        _xc: &mut ExecutionContext<'x>,
-    ) -> Result<DataCell<'x>, AllocError> {
-        Err(AllocError::OperationFailed)
+impl<'a> fmt::Debug for Item<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Item({:?})", self.name)
     }
 }
 
@@ -135,6 +107,26 @@ impl ProcessingStatus {
         self.attributes_computed_ok += other.attributes_computed_ok;
         self.attributes_not_applicable += other.attributes_not_applicable;
         self.attributes_failed_to_compute += other.attributes_failed_to_compute;
+    }
+}
+
+impl<'a> fmt::Display for Item<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "file({:?})", self.name)
+    }
+}
+
+impl<'a> DataCellOps for Item<'a> {
+    fn get_property<'x>(
+        &self,
+        property_name: &str,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
+        match property_name {
+            "fourty_two" => Ok(DataCell::U64(42, NumFmt::default())),
+            "first_byte" => extract_first_byte(&self, xc),
+            _ => Err(data_cell::Error::NotApplicable),
+        }
     }
 }
 
@@ -185,25 +177,27 @@ fn process_args(args: Vec<StdString>) -> Invocation {
 }
 
 fn extract_first_byte <'a, 'x>(
-    item: &mut Item<'a>,
+    item: &Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, ComputeError<'x>> {
-    item.stream.seek(SeekFrom::Start(0), xc)
+) -> Result<DataCell<'x>, data_cell::Error<'x>> {
+    let mut f = item.file.borrow_mut();
+    f.seek(SeekFrom::Start(0), xc)
     .map_err(|e| IOPartialError::from_error_and_size(e, 0))
-    .and_then(|_| item.stream.read_u8(xc))
-    .map(|v| DataCell::U64(v as u64))
+    .and_then(|_| f.read_u8(xc))
+    .map(|v| DataCell::U64(v as u64, data_cell::NumFmt::default()))
     .map_err(|e|
         if e.get_error_code() == IOErrorCode::UnexpectedEnd {
-            ComputeError::NotApplicable
+            data_cell::Error::NotApplicable
         } else {
-            ComputeError::IO(e.to_error())
+            data_cell::Error::IO(e.to_error())
         })
 }
 
+/*
 fn first_8_bytes<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, ComputeError<'x>> {
+) -> Result<DataCell<'x>, Error<'x>> {
     let mut buf = [0_u8; 8];
     let n = item.stream.seek_read(0, &mut buf, xc)?;
     Ok(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &buf[0..n])?))
@@ -212,7 +206,7 @@ fn first_8_bytes<'a, 'x>(
 fn identify_top_of_file_records<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, ComputeError<'x>> {
+) -> Result<DataCell<'x>, Error<'x>> {
     let mut ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
     let mut tof_buffer = [0_u8; 0x40];
     let tof_len = item.stream.seek_read(0, &mut tof_buffer, xc)?;
@@ -243,7 +237,7 @@ fn identify_top_of_file_records<'a, 'x>(
             let ver: u32 = int_be_decode(&tof[4..8]).unwrap();
             let mut id = xc.string();
             write!(id, "qcow{}", ver)
-                .map_err(|_| ComputeError::Alloc(AllocError::NotEnoughMemory))?;
+                .map_err(|_| Error::Alloc(AllocError::NotEnoughMemory))?;
             ids.push(DataCell::Identifier(id))?;
         }
     }
@@ -267,7 +261,7 @@ const ELF_HEADER_FIELDS: &[&'static str] = &[
 fn elf_header<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, ComputeError<'x>> {
+) -> Result<DataCell<'x>, Error<'x>> {
     let mut eh: Vector<'x, DataCell<'x>> = xc.vector();
     let mut magic = [0_u8; 4];
     item.stream.seek_read(0, &mut magic, xc)?;
@@ -374,16 +368,17 @@ fn elf_header<'a, 'x>(
 
     Ok(DataCell::Record(eh, ELF_HEADER_FIELDS))
 }
+*/
 
-fn process_item<'a, 'x>(
-    item_name: &str,
-    eval_expr_list: &[Expr<'a>],
+fn process_item<'x>(
+    item_name: &'x str,
+    eval_expr_list: &[Expr<'x>],
     xc: &mut ExecutionContext<'x>,
 ) -> ProcessingStatus {
     let mut status = ProcessingStatus::new();
 
     log_info!(xc, "processing {:?}: evaluating {:?}", item_name, eval_expr_list);
-    let mut f = match std::fs::File::open(item_name) {
+    let f = match std::fs::File::open(item_name) {
         Ok(f) => {
             status.accessible_items = 1;
             f
@@ -393,14 +388,15 @@ fn process_item<'a, 'x>(
             return status;
         }
     };
-    let mut item = Item {
+
+    let item = Item {
         name: item_name,
-        stream: &mut f,
+        file: RefCell::new(f),
     };
-    let root = match xc.boxed(ItemCell{ item: &mut item }) {
-        Ok(b) => b.to_dyn(),
-        Err((e, cell)) => {
-            log_error!(xc, "error:{:?}:{:?}", cell.item.name, e);
+    let root = match xc.rc(item) {
+        Ok(b) => Rc::to_dyn::<dyn DataCellOps + 'x>(b),
+        Err((e, item)) => {
+            log_error!(xc, "error:{:?}:{:?}", item.name, e);
             status.attributes_failed_to_compute += eval_expr_list.len();
             return status;
         }
@@ -409,6 +405,8 @@ fn process_item<'a, 'x>(
 
     for expr in eval_expr_list {
         log_info!(xc, "computing expression {:?} for item {:?}", expr, item_name);
+        let v = root.get_property("fourty_two", xc);
+        log_info!(xc, "root.fourty_two: {:?}", v);
         match expr.eval_on_cell(&mut root, xc) {
             Ok(av) => {
                 println!("{:?}\t{}\t{}", item_name, expr, av);
@@ -416,13 +414,13 @@ fn process_item<'a, 'x>(
             },
             Err(e) => {
                 match e {
-                    ComputeError::NotApplicable => {
+                    Error::NotApplicable => {
                         status.attributes_not_applicable += 1;
-                        log_warn!(xc, "warning:{:?}:{:?}:{}", item_name, expr, e);
+                        log_warn!(xc, "warning:{:?}:{:?}:{:?}", item_name, expr, e);
                     },
                     _ => {
                         status.attributes_failed_to_compute += 1;
-                        log_error!(xc, "error:{:?}:{:?}:{}", item_name, expr, e);
+                        log_error!(xc, "error:{:?}:{:?}:{:?}", item_name, expr, e);
                     }
                 }
             },
@@ -448,9 +446,9 @@ fn parse_eval_expr_list<'a>(
 }
 
 /* run **********************************************************************/
-fn run(
-    invocation: &Invocation,
-    xc: &mut ExecutionContext<'_>
+fn run<'x>(
+    invocation: &'x Invocation,
+    xc: &mut ExecutionContext<'x>
 ) -> Result<(), ExitCode> {
     if invocation.verbose {
         log_info!(xc, "lib: {}", halfbit::lib_name());
