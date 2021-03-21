@@ -939,6 +939,20 @@ mod tests {
     }
 
     #[test]
+    fn comma_token() {
+        let xc = ExecutionContext::nop();
+        let src = Source::new(" ,\n", "-");
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_basic_token().unwrap();
+        assert_eq!(t.data, BasicTokenData::Comma);
+        assert_eq!(t.source_slice.as_str(), ",");
+        assert_eq!((t.source_slice.start_line, t.source_slice.start_column), (1, 2));
+        assert_eq!((t.source_slice.end_line, t.source_slice.end_column), (1, 3));
+        let t = p.parse_basic_token().unwrap();
+        assert_eq!(t.data, BasicTokenData::End);
+    }
+
+    #[test]
     fn next_token_encounters_bad_char() {
         let xc = ExecutionContext::nop();
         let src = Source::new("`", "-");
@@ -1048,6 +1062,39 @@ mod tests {
         assert_eq!(t.source_slice.as_str(), "foo .bar , \nmoo\n. mar");
     }
 
+    #[test]
+    fn display_basic_token_data() {
+        use crate::mm::SingleAlloc;
+        use crate::mm::Allocator;
+        use core::fmt::Write;
+        let mut buffer = [0; 2048];
+        let a = SingleAlloc::new(&mut buffer);
+
+        {
+            let mut s = String::new(a.to_ref());
+            write!(s, "{}", BasicTokenData::End).unwrap();
+            assert_eq!(s.as_str(), "<end-of-file>");
+        }
+
+        {
+            let mut s = String::new(a.to_ref());
+            write!(s, "{}", BasicTokenData::Identifier(String::map_str("abc"))).unwrap();
+            assert_eq!(s.as_str(), "abc");
+        }
+
+        {
+            let mut s = String::new(a.to_ref());
+            write!(s, "{}", BasicTokenData::Dot).unwrap();
+            assert_eq!(s.as_str(), "'.'");
+        }
+
+        {
+            let mut s = String::new(a.to_ref());
+            write!(s, "{}", BasicTokenData::Comma).unwrap();
+            assert_eq!(s.as_str(), "','");
+        }
+
+    }
 }
 
 
