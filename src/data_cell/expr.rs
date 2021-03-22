@@ -12,10 +12,6 @@ use crate::mm::AllocError;
 use crate::error::Error;
 use crate::xc_err;
 
-trait TokenData {
-    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap;
-}
-
 #[derive(Debug, PartialEq)]
 pub enum ParseErrorData {
     ReachedEnd,
@@ -279,24 +275,11 @@ impl<'t> Display for BasicTokenData<'t> {
     }
 }
 
-impl<'a> TokenData for PrimaryExpr<'a> {
-    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
-        BasicTokenTypeBitmap::from_list(&[
-            BasicTokenType::Identifier,
-        ])
-    }
-}
 impl<'t> Display for PrimaryExpr<'t> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             PrimaryExpr::Identifier(s) => s.fmt(f),
         }
-    }
-}
-
-impl<'a> TokenData for PostfixExpr<'a> {
-    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
-        PrimaryExpr::get_start_basic_token_type_bitmap()
     }
 }
 
@@ -326,12 +309,6 @@ impl<'t> Display for PostfixExpr<'t> {
     }
 }
 
-impl<'a> TokenData for Expr<'a> {
-    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
-        PostfixExpr::get_start_basic_token_type_bitmap()
-    }
-}
-
 impl<'t> From<PostfixExpr<'t>> for Expr<'t> {
     fn from(pe: PostfixExpr<'t>) -> Expr<'t> {
         Expr::Postfix(pe)
@@ -343,12 +320,6 @@ impl<'t> Display for Expr<'t> {
         match self {
             Expr::Postfix(pfe) => pfe.fmt(f),
         }
-    }
-}
-
-impl<'a> TokenData for ExprList<'a> {
-    fn get_start_basic_token_type_bitmap() -> BasicTokenTypeBitmap {
-        Expr::get_start_basic_token_type_bitmap()
     }
 }
 
@@ -705,6 +676,10 @@ impl<'s, 't> Parser<'s, 't> {
 
 #[cfg(test)]
 mod tests {
+    use crate::mm::SingleAlloc;
+    use crate::mm::Allocator;
+    use core::fmt::Write;
+
     use super::*;
 
     #[test]
@@ -727,6 +702,10 @@ mod tests {
 
     #[test]
     fn basic_token_type_names() {
+        assert_eq!(BasicTokenType::Identifier.name(), "identifier");
+        assert_eq!(BasicTokenType::Dot.name(), "dot");
+        assert_eq!(BasicTokenType::Comma.name(), "comma");
+
         use crate::mm::BumpAllocator;
         use crate::mm::Allocator;
         use crate::io::stream::NULL_STREAM;
@@ -1093,8 +1072,126 @@ mod tests {
             write!(s, "{}", BasicTokenData::Comma).unwrap();
             assert_eq!(s.as_str(), "','");
         }
-
     }
+
+    #[test]
+    fn display_primary_expr_identifier() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let x = PrimaryExpr::Identifier(String::map_str("abc"));
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "abc");
+    }
+
+    #[test]
+    fn display_postfix_root_primary() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let x = PrimaryExpr::Identifier(String::map_str("abc"));
+        let x = PostfixRoot::Primary(x);
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "abc");
+    }
+
+    #[test]
+    fn display_postfix_item_property() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let x = PostfixItem::Property(String::map_str("abc"));
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), ".abc");
+    }
+
+    #[test]
+    fn display_postfix_expr_0() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let x = PostfixExpr {
+            root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
+            items: Vector::map_slice(&[]),
+        };
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "a");
+    }
+
+    #[test]
+    fn display_postfix_expr_1() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let items = [ PostfixItem::Property(String::map_str("b")), ];
+        let x = PostfixExpr {
+            root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
+            items: Vector::map_slice(&items),
+        };
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "a.b");
+    }
+
+    #[test]
+    fn display_expr_postfix() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let x = Expr::Postfix(PostfixExpr {
+            root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
+            items: Vector::map_slice(&[]),
+        });
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "a");
+    }
+
+    #[test]
+    fn display_expr_list_0() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let items = [];
+        let x = ExprList { items: Vector::map_slice(&items), };
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "");
+    }
+
+    #[test]
+    fn display_expr_list_1() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let items = [ 
+            Expr::Postfix(PostfixExpr {
+                root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
+                items: Vector::map_slice(&[]),
+            }),
+        ];
+        let x = ExprList { items: Vector::map_slice(&items), };
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "a");
+    }
+
+    #[test]
+    fn display_expr_list_2() {
+        let mut buffer = [0_u8; 256];
+        let a = SingleAlloc::new(&mut buffer);
+        let mut s = String::new(a.to_ref());
+        let items = [ 
+            Expr::Postfix(PostfixExpr {
+                root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
+                items: Vector::map_slice(&[]),
+            }),
+            Expr::Postfix(PostfixExpr {
+                root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("b"))),
+                items: Vector::map_slice(&[]),
+            }),
+        ];
+        let x = ExprList { items: Vector::map_slice(&items), };
+        write!(s, "{}", x).unwrap();
+        assert_eq!(s.as_str(), "a, b");
+    }
+
 }
 
 
