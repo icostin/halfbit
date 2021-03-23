@@ -587,13 +587,13 @@ impl<'s, 't> Parser<'s, 't> {
         Ok(self.expect_token(BasicTokenType::Identifier.to_bitmap())?.data.unwrap_identifier_data())
     }
 
-    pub fn is_next_token_matching(
-        &mut self,
-        desired: BasicTokenTypeBitmap,
-    ) -> Result<bool, ParseError<'t>> {
-        let t = self.preview_next_token()?;
-        Ok(desired.contains(t.data.to_type()))
-    }
+    // pub fn is_next_token_matching(
+    //     &mut self,
+    //     desired: BasicTokenTypeBitmap,
+    // ) -> Result<bool, ParseError<'t>> {
+    //     let t = self.preview_next_token()?;
+    //     Ok(desired.contains(t.data.to_type()))
+    // }
 
     pub fn get_token_matching_types(
         &mut self,
@@ -957,6 +957,28 @@ mod tests {
         assert_eq!(e.get_msg(), "unexpected char '`' at 1:1");
     }
 
+    #[test]
+    fn token_to_parts() {
+        let xc = ExecutionContext::nop();
+        let src = Source::new(".a", "-");
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_basic_token().unwrap();
+        let (d, ss) = t.to_parts();
+        assert_eq!(d, BasicTokenData::Dot);
+        assert_eq!(ss.as_str(), ".");
+        assert_eq!((ss.start_line, ss.start_column), (1, 1));
+        assert_eq!((ss.end_line, ss.end_column), (1, 2));
+    }
+
+    #[test]
+    fn token_unwrap_data() {
+        let xc = ExecutionContext::nop();
+        let src = Source::new(".a", "-");
+        let mut p = Parser::new(&src, &xc);
+        let t = p.parse_basic_token().unwrap();
+        let d = t.unwrap_data();
+        assert_eq!(d, BasicTokenData::Dot);
+    }
 
     #[test]
     fn id_as_primary_expr() {
@@ -1161,7 +1183,7 @@ mod tests {
         let mut buffer = [0_u8; 256];
         let a = SingleAlloc::new(&mut buffer);
         let mut s = String::new(a.to_ref());
-        let items = [ 
+        let items = [
             Expr::Postfix(PostfixExpr {
                 root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
                 items: Vector::map_slice(&[]),
@@ -1177,7 +1199,7 @@ mod tests {
         let mut buffer = [0_u8; 256];
         let a = SingleAlloc::new(&mut buffer);
         let mut s = String::new(a.to_ref());
-        let items = [ 
+        let items = [
             Expr::Postfix(PostfixExpr {
                 root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
                 items: Vector::map_slice(&[]),
@@ -1192,6 +1214,22 @@ mod tests {
         assert_eq!(s.as_str(), "a, b");
     }
 
+    #[test]
+    fn unwrap_expr_list_items() {
+        let items = [
+            Expr::Postfix(PostfixExpr {
+                root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("a"))),
+                items: Vector::map_slice(&[]),
+            }),
+            Expr::Postfix(PostfixExpr {
+                root: PostfixRoot::Primary(PrimaryExpr::Identifier(String::map_str("b"))),
+                items: Vector::map_slice(&[]),
+            }),
+        ];
+        let x = ExprList { items: Vector::map_slice(&items), };
+        let v = x.unwrap_items();
+        assert_eq!(v.len(), 2);
+    }
 }
 
 
