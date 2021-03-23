@@ -3,8 +3,6 @@ use core::fmt::Display;
 use core::fmt::Formatter;
 use core::fmt::Result as FmtResult;
 
-use crate::num_traits::FromPrimitive;
-
 use crate::ExecutionContext;
 use crate::mm::Vector;
 use crate::mm::String;
@@ -53,7 +51,7 @@ pub struct CharInfo {
     size: u8,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BasicTokenType {
     End,
     Identifier,
@@ -173,6 +171,19 @@ impl BasicTokenType {
     }
     pub fn to_bitmap(&self) -> BasicTokenTypeBitmap {
         BasicTokenTypeBitmap(1_u64 << (*self as usize))
+    }
+    pub fn from_u8(v: u8) -> Option<BasicTokenType> {
+        if v == (BasicTokenType::End as u8) {
+            Some(BasicTokenType::End)
+        } else if v == (BasicTokenType::Identifier as u8) {
+            Some(BasicTokenType::Identifier)
+        } else if v == (BasicTokenType::Dot as u8) {
+            Some(BasicTokenType::Dot)
+        } else if v == (BasicTokenType::Comma as u8) {
+            Some(BasicTokenType::Comma)
+        } else {
+            None
+        }
     }
 }
 
