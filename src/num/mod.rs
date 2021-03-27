@@ -1,5 +1,7 @@
 use core::ptr::NonNull;
 
+pub mod fmt;
+
 pub trait PrimitiveInt:
     Copy +
     core::ops::Shl<u8, Output = Self> +
