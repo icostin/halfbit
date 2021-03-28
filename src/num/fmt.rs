@@ -1,5 +1,6 @@
 use core::num::NonZeroU8;
 use core::num::NonZeroU32;
+use core::convert::TryFrom;
 
 #[derive(Clone, Copy,  Debug, PartialEq)]
 pub struct Radix(NonZeroU8);
@@ -32,17 +33,26 @@ impl MinDigitCount {
     }
 }
 
-#[derive(Clone, Copy,  Debug, PartialEq)]
-pub struct MiniPack {
-    pack: NonZeroU32,
-}
-
 
 #[derive(Clone, Copy,  Debug, PartialEq)]
 pub enum PositiveSign {
     Hidden,
     Space,
     Plus,
+}
+impl TryFrom<u8> for PositiveSign {
+    type Error = ();
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(PositiveSign::Hidden),
+            1 => Ok(PositiveSign::Space),
+            2 => Ok(PositiveSign::Plus),
+            _ => Err(())
+        }
+    }
+}
+impl From<PositiveSign> for u8 {
+    fn from(v: PositiveSign) -> u8 { v as u8 }
 }
 
 #[derive(Clone, Copy,  Debug, PartialEq)]
@@ -51,6 +61,26 @@ pub enum ZeroSign {
     Space,
     Plus,
     Minus,
+}
+impl TryFrom<u8> for ZeroSign {
+    type Error = ();
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(ZeroSign::Hidden),
+            1 => Ok(ZeroSign::Space),
+            2 => Ok(ZeroSign::Plus),
+            3 => Ok(ZeroSign::Minus),
+            _ => Err(())
+        }
+    }
+}
+impl From<ZeroSign> for u8 {
+    fn from(v: ZeroSign) -> u8 { v as u8 }
+}
+
+#[derive(Clone, Copy,  Debug, PartialEq)]
+pub struct MiniPack {
+    pack: NonZeroU32,
 }
 
 #[cfg(test)]
@@ -74,4 +104,31 @@ mod tests {
         assert_eq!(MinDigitCount::new(0).unwrap().unwrap(), 1);
         assert_eq!(MinDigitCount::new(255), None);
     }
+
+    #[test]
+    fn positive_sign_conv() {
+        use core::convert::TryInto;
+        assert_eq!(0_u8, PositiveSign::Hidden.into());
+        assert_eq!(1_u8, PositiveSign::Space.into());
+        assert_eq!(2_u8, PositiveSign::Plus.into());
+        assert_eq!(PositiveSign::Hidden, 0_u8.try_into().unwrap());
+        assert_eq!(PositiveSign::Space, 1_u8.try_into().unwrap());
+        assert_eq!(PositiveSign::Plus, 2_u8.try_into().unwrap());
+        assert_eq!(PositiveSign::try_from(3_u8), Err(()));
+    }
+
+    #[test]
+    fn zero_sign_conv() {
+        use core::convert::TryInto;
+        assert_eq!(0_u8, ZeroSign::Hidden.into());
+        assert_eq!(1_u8, ZeroSign::Space.into());
+        assert_eq!(2_u8, ZeroSign::Plus.into());
+        assert_eq!(3_u8, ZeroSign::Minus.into());
+        assert_eq!(ZeroSign::Hidden, 0_u8.try_into().unwrap());
+        assert_eq!(ZeroSign::Space, 1_u8.try_into().unwrap());
+        assert_eq!(ZeroSign::Plus, 2_u8.try_into().unwrap());
+        assert_eq!(ZeroSign::Minus, 3_u8.try_into().unwrap());
+        assert_eq!(ZeroSign::try_from(4_u8), Err(()));
+    }
+
 }
