@@ -460,5 +460,39 @@ mod tests {
     #[test] fn i64_reinterpret_u8() { assert_eq!(i64::reinterpret_u8(0x80), 0x80_i64); }
     #[test] fn usize_reinterpret_u8() { assert_eq!(usize::reinterpret_u8(0xAB), 0xAB_usize); }
     #[test] fn isize_reinterpret_u8() { assert_eq!(isize::reinterpret_u8(0x80), 0x80_isize); }
+
+    #[test] fn u8_trunc_to_u8() { assert_eq!(u8::trunc_to_u8(0xAB), 0xAB_u8) }
+    #[test] fn i8_trunc_to_u8() { assert_eq!(i8::trunc_to_u8(-0x55), 0xAB_u8) }
+    #[test] fn u16_trunc_to_u8() { assert_eq!(u16::trunc_to_u8(0x88AB), 0xAB_u8) }
+    #[test] fn i16_trunc_to_u8() { assert_eq!(i16::trunc_to_u8(-0x7755), 0xAB_u8) }
+    #[test] fn u32_trunc_to_u8() { assert_eq!(u32::trunc_to_u8(0x888888AB), 0xAB_u8) }
+    #[test] fn i32_trunc_to_u8() { assert_eq!(i32::trunc_to_u8(-0x77777755), 0xAB_u8) }
+    #[test] fn u64_trunc_to_u8() { assert_eq!(u64::trunc_to_u8(0x88888888888888AB), 0xAB_u8) }
+    #[test] fn i64_trunc_to_u8() { assert_eq!(i64::trunc_to_u8(-0x7777777777777755), 0xAB_u8) }
+    #[test] fn usize_trunc_to_u8() { assert_eq!(usize::trunc_to_u8(0x888888AB), 0xAB_u8) }
+    #[test] fn isize_trunc_to_u8() { assert_eq!(isize::trunc_to_u8(-0x77777755), 0xAB_u8) }
+    #[test] fn u8_lsb0_mask() { assert_eq!(u8::lsb_mask(0), 0x00); }
+    #[test] fn u8_lsb1_mask() { assert_eq!(u8::lsb_mask(1), 0x01); }
+    #[test] fn u8_lsb7_mask() { assert_eq!(u8::lsb_mask(7), 0x7F); }
+    #[test] fn u8_lsb8_mask() { assert_eq!(u8::lsb_mask(8), 0xFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u8_lsb9_mask() { u8::lsb_mask(9); }
+    #[test] fn u16_lsb15_mask() { assert_eq!(u16::lsb_mask(15), 0x7FFF); }
+    #[test] fn u16_lsb16_mask() { assert_eq!(u16::lsb_mask(16), 0xFFFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u16_lsb17_mask() { u16::lsb_mask(17); }
+    #[test] fn u32_lsb31_mask() { assert_eq!(u32::lsb_mask(31), 0x7FFFFFFF); }
+    #[test] fn u32_lsb32_mask() { assert_eq!(u32::lsb_mask(32), 0xFFFFFFFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u32_lsb33_mask() { u32::lsb_mask(33); }
+    #[test] fn u64_lsb63_mask() { assert_eq!(u64::lsb_mask(63), 0x7FFFFFFFFFFFFFFF); }
+    #[test] fn u64_lsb64_mask() { assert_eq!(u64::lsb_mask(64), 0xFFFFFFFFFFFFFFFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u64_lsb65_mask() { u64::lsb_mask(65); }
+    #[test] fn usize_lsb_near_max_mask() { assert_eq!(usize::lsb_mask(usize::SIZE * BITS_PER_BYTE - 1), (!0_usize) >> 1); }
+    #[test] fn usize_lsb_max_mask() { assert_eq!(usize::lsb_mask(usize::SIZE * BITS_PER_BYTE), !0_usize); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn usize_lsb_over_max_mask() { usize::lsb_mask(usize::SIZE * BITS_PER_BYTE + 1); }
+
 }
 
