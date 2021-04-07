@@ -1,4 +1,5 @@
 use crate::num::PrimitiveInt;
+use crate::num::BITS_PER_BYTE;
 
 pub fn int_le_decode<T: PrimitiveInt>(src: &[u8]) -> Option<T> {
     if src.len() < T::SIZE {
@@ -20,7 +21,7 @@ pub fn int_be_decode<T: PrimitiveInt>(src: &[u8]) -> Option<T> {
     } else {
         let mut v = T::ZERO;
         for b in src[..T::SIZE].iter() {
-            v = (v << 8) | T::reinterpret_u8(*b);
+            v = (v << BITS_PER_BYTE) | T::reinterpret_u8(*b);
         }
         Some(v)
     }
@@ -44,7 +45,6 @@ mod tests {
     fn u16be_on_truncated_buffer() {
         assert_eq!(int_be_decode::<u16>(b"\x12"), None);
     }
-
 
     #[test]
     fn u16be_decode() {

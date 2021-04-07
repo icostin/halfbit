@@ -2,27 +2,99 @@ use core::ptr::NonNull;
 
 pub mod fmt;
 
+pub const BITS_PER_BYTE: usize = 8;
+
 pub trait PrimitiveInt:
     Copy +
     core::ops::Shl<u8, Output = Self> +
+    core::ops::Shl<usize, Output = Self> +
     core::ops::BitAnd<Output = Self> +
     core::ops::BitOr<Output = Self> +
+    core::ops::Not<Output = Self> +
+    core::cmp::PartialEq +
+    core::cmp::PartialOrd +
     core::cmp::Eq +
     core::ops::Sub<Output = Self> +
-    Sized {
+    core::ops::Div<Output = Self> +
+    core::ops::Rem<Output = Self> +
+    Sized
+where
+    Self::SameSizeUInt: PrimitiveUInt,
+    Self::SameSizeSInt: PrimitiveSInt,
+{
     const SIZE: usize;
     const ZERO: Self;
     const ONE: Self;
+    type SameSizeUInt;
+    type SameSizeSInt;
+
     fn reinterpret_u8(v: u8) -> Self;
+    fn trunc_to_u8(self) -> u8;
+    fn lsb_mask_checked(n: usize) -> Option<Self> {
+        let bit_count = Self::SIZE * BITS_PER_BYTE;
+        if n < bit_count {
+            Some((Self::ONE << n) - Self::ONE)
+        } else if n == bit_count {
+            Some(!Self::ZERO)
+        } else {
+            None
+        }
+    }
+    fn lsb_mask(n: usize) -> Self {
+        Self::lsb_mask_checked(n).unwrap()
+    }
+    fn msb_mask_checked(n: usize) -> Option<Self> {
+        Self::lsb_mask_checked(n).map(|x| !x)
+    }
+    fn msb_mask(n: usize) -> Self {
+        Self::msb_mask_checked(n).unwrap()
+    }
+    fn incl_bit_range_mask_checked(pos: usize, count: usize) -> Option<Self> {
+        pos.checked_add(count)
+            .and_then(|end| Self::lsb_mask_checked(end))
+            .and_then(|em| Self::msb_mask_checked(pos).map(|pm| em & pm))
+    }
+    fn excl_bit_range_mask_checked(pos: usize, count: usize) -> Option<Self> {
+        Self::incl_bit_range_mask_checked(pos, count).map(|x| !x)
+    }
+    fn incl_bit_range_mask(pos: usize, count: usize) -> Self {
+        Self::incl_bit_range_mask_checked(pos, count).unwrap()
+    }
+    fn excl_bit_range_mask(pos: usize, count: usize) -> Self {
+        !Self::incl_bit_range_mask(pos, count)
+    }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt;
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt;
+    fn neg_wrapping(self) -> Self;
+    fn abs_uint(self) -> Self::SameSizeUInt {
+        let p =
+            if self >= Self::ZERO {
+                self
+            } else {
+                self.neg_wrapping()
+            };
+        p.reinterpret_as_uint()
+    }
 }
 
-pub trait PrimitiveUInt: PrimitiveInt {}
+pub trait PrimitiveUInt: PrimitiveInt { }
+pub trait PrimitiveSInt: PrimitiveInt { }
 
 impl PrimitiveInt for u8 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u8;
+    type SameSizeSInt = i8;
     fn reinterpret_u8(v: u8) -> Self { v }
+    fn trunc_to_u8(self) -> u8 { self }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
 impl PrimitiveUInt for u8 {}
 
@@ -30,7 +102,17 @@ impl PrimitiveInt for u16 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u16;
+    type SameSizeSInt = i16;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
 impl PrimitiveUInt for u16 {}
 
@@ -38,7 +120,17 @@ impl PrimitiveInt for u32 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u32;
+    type SameSizeSInt = i32;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
 impl PrimitiveUInt for u32 {}
 
@@ -46,7 +138,17 @@ impl PrimitiveInt for u64 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u64;
+    type SameSizeSInt = i64;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
 impl PrimitiveUInt for u64 {}
 
@@ -54,7 +156,17 @@ impl PrimitiveInt for usize {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = usize;
+    type SameSizeSInt = isize;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
 impl PrimitiveUInt for usize {}
 
@@ -62,37 +174,91 @@ impl PrimitiveInt for i8 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u8;
+    type SameSizeSInt = i8;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
+impl PrimitiveSInt for i8 {}
 
 impl PrimitiveInt for i16 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u16;
+    type SameSizeSInt = i16;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
+impl PrimitiveSInt for i16 {}
 
 impl PrimitiveInt for i32 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u32;
+    type SameSizeSInt = i32;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
+impl PrimitiveSInt for i32 {}
 
 impl PrimitiveInt for i64 {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = u64;
+    type SameSizeSInt = i64;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
+impl PrimitiveSInt for i64 {}
 
 impl PrimitiveInt for isize {
     const SIZE: usize = core::mem::size_of::<Self>();
     const ZERO: Self = 0;
     const ONE: Self = 1;
+    type SameSizeUInt = usize;
+    type SameSizeSInt = isize;
     fn reinterpret_u8(v: u8) -> Self { v as Self }
+    fn trunc_to_u8(self) -> u8 { self as u8 }
+    fn reinterpret_as_uint(self) -> Self::SameSizeUInt {
+        self as Self::SameSizeUInt
+    }
+    fn reinterpret_as_sint(self) -> Self::SameSizeSInt {
+        self as Self::SameSizeSInt
+    }
+    fn neg_wrapping(self) -> Self { self.wrapping_neg() }
 }
-
+impl PrimitiveSInt for isize {}
 
 pub fn is_power_of_2<T: PrimitiveUInt> (n: T) -> bool {
     n != T::ZERO && (n & (n - T::ONE)) == T::ZERO
