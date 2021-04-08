@@ -4,6 +4,7 @@ use core::ops::Deref;
 use crate::ExecutionContext;
 use crate::mm::Rc;
 use crate::io::IOError;
+use crate::num::fmt::MiniNumFmtPack;
 
 pub mod expr;
 pub mod eval;
@@ -24,18 +25,10 @@ pub trait DataCellOps: fmt::Debug + fmt::Display {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct NumFmt(u64);
-impl NumFmt {
-    pub fn default () -> NumFmt {
-        NumFmt(0)
-    }
-}
-
 #[derive(Debug)]
 pub enum DataCell<'d> {
     Nothing,
-    U64(u64, NumFmt),
+    U64(u64, MiniNumFmtPack),
     Id(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
 }
@@ -44,7 +37,12 @@ impl<'d> fmt::Display for DataCell<'d> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DataCell::Nothing => Ok(()),
-            DataCell::U64(v, _nf) => write!(f, "{}", v),
+            DataCell::U64(v, nf) => {
+                let mut buf = [0_u8; 256];
+                nf.int_fmt(*v, &mut buf)
+                    .map_err(|_| fmt::Error)
+                    .and_then(|s| f.write_str(s))
+            },
             DataCell::Id(s) => write!(f, "{}", s),
             DataCell::Dyn(v) => write!(f, "{}", v.deref())
         }
@@ -84,12 +82,6 @@ mod tests {
     }
 
     #[test]
-    fn num_fmt_default() {
-        let nf = NumFmt::default();
-        assert_eq!(nf.0, 0);
-    }
-
-    #[test]
     fn default_get_property() {
         let mut xc = ExecutionContext::nop();
         assert_eq!(Error::NotApplicable, Abc().get_property("zilch", &mut xc).unwrap_err());
@@ -114,7 +106,7 @@ mod tests {
         }
         {
             let mut s = xc.string();
-            write!(s, "[{}]", DataCell::U64(12345, NumFmt::default())).unwrap();
+            write!(s, "[{}]", DataCell::U64(12345, MiniNumFmtPack::default())).unwrap();
             assert_eq!(s.as_str(), "[12345]");
         }
         {

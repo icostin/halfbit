@@ -288,7 +288,7 @@ impl MiniNumFmtPack {
     pub fn default() -> MiniNumFmtPack {
         MiniNumFmtPack::new(
             Radix::new(10).unwrap(),
-            RadixNotation::DefaultExplicitPrefix,
+            RadixNotation::DefaultPrefix,
             MinDigitCount::new(1).unwrap(),
             PositiveSign::Hidden,
             ZeroSign::Hidden)
