@@ -493,6 +493,28 @@ mod tests {
     #[test] fn usize_lsb_max_mask() { assert_eq!(usize::lsb_mask(usize::SIZE * BITS_PER_BYTE), !0_usize); }
     #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
     #[test] fn usize_lsb_over_max_mask() { usize::lsb_mask(usize::SIZE * BITS_PER_BYTE + 1); }
+    #[test] fn u8_msb0_mask() { assert_eq!(u8::msb_mask(0), !0x00); }
+    #[test] fn u8_msb1_mask() { assert_eq!(u8::msb_mask(1), !0x01); }
+    #[test] fn u8_msb7_mask() { assert_eq!(u8::msb_mask(7), !0x7F); }
+    #[test] fn u8_msb8_mask() { assert_eq!(u8::msb_mask(8), !0xFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u8_msb9_mask() { u8::msb_mask(9); }
+    #[test] fn u16_msb15_mask() { assert_eq!(u16::msb_mask(15), !0x7FFF); }
+    #[test] fn u16_msb16_mask() { assert_eq!(u16::msb_mask(16), !0xFFFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u16_msb17_mask() { u16::msb_mask(17); }
+    #[test] fn u32_msb31_mask() { assert_eq!(u32::msb_mask(31), !0x7FFFFFFF); }
+    #[test] fn u32_msb32_mask() { assert_eq!(u32::msb_mask(32), !0xFFFFFFFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u32_msb33_mask() { u32::msb_mask(33); }
+    #[test] fn u64_msb63_mask() { assert_eq!(u64::msb_mask(63), !0x7FFFFFFFFFFFFFFF); }
+    #[test] fn u64_msb64_mask() { assert_eq!(u64::msb_mask(64), !0xFFFFFFFFFFFFFFFF); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn u64_msb65_mask() { u64::msb_mask(65); }
+    #[test] fn usize_msb_near_max_mask() { assert_eq!(usize::msb_mask(usize::SIZE * BITS_PER_BYTE - 1), !((!0_usize) >> 1)); }
+    #[test] fn usize_msb_max_mask() { assert_eq!(usize::msb_mask(usize::SIZE * BITS_PER_BYTE), 0_usize); }
+    #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+    #[test] fn usize_msb_over_max_mask() { usize::msb_mask(usize::SIZE * BITS_PER_BYTE + 1); }
 
 }
 
