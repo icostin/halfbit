@@ -17,7 +17,7 @@ pub enum Error<'e> {
     Output(IOError<'e>), // used by report-generating functions like to_human_readable
 }
 
-pub trait DataCellOps: fmt::Debug + fmt::Display {
+pub trait DataCellOps: fmt::Debug {
 
     fn get_property<'x>(
         &self,
@@ -43,22 +43,6 @@ pub enum DataCell<'d> {
     U64(u64, MiniNumFmtPack),
     Id(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
-}
-
-impl<'d> fmt::Display for DataCell<'d> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DataCell::Nothing => Ok(()),
-            DataCell::U64(v, nf) => {
-                let mut buf = [0_u8; 256];
-                nf.int_fmt(*v, &mut buf)
-                    .map_err(|_| fmt::Error)
-                    .and_then(|s| f.write_str(s))
-            },
-            DataCell::Id(s) => write!(f, "{}", s),
-            DataCell::Dyn(v) => write!(f, "{}", v.deref())
-        }
-    }
 }
 
 impl<'d> DataCellOps for DataCell<'d> {
@@ -120,40 +104,5 @@ mod tests {
         assert_eq!(Error::NotApplicable, Abc().get_property("zilch", &mut xc).unwrap_err());
     }
 
-    #[test]
-    fn data_cell_display() {
-        use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
-        use crate::io::stream::NULL_STREAM;
-        use crate::exectx::ExecutionContext;
-        use crate::exectx::LogLevel;
-        use core::fmt::Write;
-        let mut buf = [0_u8; 256];
-        let a = BumpAllocator::new(&mut buf);
-        let xc = ExecutionContext::new(
-            a.to_ref(), a.to_ref(), NULL_STREAM.get(), LogLevel::Critical);
-        {
-            let mut s = xc.string();
-            write!(s, "[{}]", DataCell::Nothing).unwrap();
-            assert_eq!(s.as_str(), "[]");
-        }
-        {
-            let mut s = xc.string();
-            write!(s, "[{}]", DataCell::U64(12345, MiniNumFmtPack::default())).unwrap();
-            assert_eq!(s.as_str(), "[12345]");
-        }
-        {
-            let mut s = xc.string();
-            write!(s, "[{}]", DataCell::Id("abc")).unwrap();
-            assert_eq!(s.as_str(), "[abc]");
-        }
-        {
-            let mut s = xc.string();
-            write!(s, "[{}]", 
-                DataCell::Dyn(Rc::to_dyn(xc.rc(Abc()).unwrap())),
-            ).unwrap();
-            assert_eq!(s.as_str(), "[<abc>]");
-        }
-    }
 }
 
