@@ -4,7 +4,9 @@ use core::cell::RefCell;
 use core::fmt;
 
 use std::string::String as StdString;
+use std::io::stdout;
 use std::io::stderr;
+use std::fmt::Write as FmtWrite;
 
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
@@ -18,16 +20,19 @@ use halfbit::mm::Rc;
 //use halfbit::mm::Vector as HbVector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOPartialError;
+use halfbit::io::IOError;
 //use halfbit::io::IOPartialResult;
 //use halfbit::io::stream::RandomAccessRead;
 use halfbit::io::stream::SeekFrom;
 use halfbit::io::stream::Seek;
 use halfbit::io::stream::Read;
+use halfbit::io::stream::Write;
 //use halfbit::conv::int_be_decode;
 use halfbit::log_debug;
 use halfbit::log_info;
 use halfbit::log_warn;
 use halfbit::log_error;
+use halfbit::log_crit;
 
 use halfbit::data_cell;
 use halfbit::data_cell::DataCell;
@@ -70,6 +75,7 @@ struct ProcessingStatus {
     attributes_computed_ok: usize,
     attributes_not_applicable: usize,
     attributes_failed_to_compute: usize,
+    output_error: bool,
 }
 
 impl ExitCode {
@@ -99,6 +105,7 @@ impl ProcessingStatus {
             attributes_computed_ok: 0,
             attributes_not_applicable: 0,
             attributes_failed_to_compute: 0,
+            output_error: false,
         }
     }
     pub fn add(&mut self, other: &Self) {
@@ -107,6 +114,7 @@ impl ProcessingStatus {
         self.attributes_computed_ok += other.attributes_computed_ok;
         self.attributes_not_applicable += other.attributes_not_applicable;
         self.attributes_failed_to_compute += other.attributes_failed_to_compute;
+        self.output_error |= other.output_error;
     }
 }
 
@@ -375,9 +383,24 @@ fn elf_header<'a, 'x>(
 }
 */
 
+fn output_expr_value<'x>(
+    item_name: &str,
+    expr: &Expr<'x>,
+    value: &DataCell<'x>,
+    out: &mut (dyn Write + '_),
+    xc: &mut ExecutionContext<'x>,
+) -> Result<(), Error<'x>> {
+    write!(out, "{:?}\t{}\t", item_name, expr)
+        .map_err(|_| Error::Output(
+                    IOError::with_str(IOErrorCode::Unsuccessful, "output error")))
+        .and_then(|_| value.to_human_readable(out, xc))
+        .and_then(|_| out.write_all(b"\n", xc).map_err(|e| Error::Output(e.to_error())))
+}
+
 fn process_item<'x>(
     item_name: &'x str,
     eval_expr_list: &[Expr<'x>],
+    out: &mut (dyn Write + '_),
     xc: &mut ExecutionContext<'x>,
 ) -> ProcessingStatus {
     let mut status = ProcessingStatus::new();
@@ -410,25 +433,27 @@ fn process_item<'x>(
 
     for expr in eval_expr_list {
         log_info!(xc, "computing expression {:?} for item {:?}", expr, item_name);
-        let v = root.get_property("fourty_two", xc);
-        log_info!(xc, "root.fourty_two: {:?}", v);
-        match expr.eval_on_cell(&mut root, xc) {
-            Ok(av) => {
-                println!("{:?}\t{}\t{}", item_name, expr, av);
-                status.attributes_computed_ok += 1;
-            },
-            Err(e) => {
-                match e {
-                    Error::NotApplicable => {
-                        status.attributes_not_applicable += 1;
-                        log_warn!(xc, "warning:{:?}:{:?}:{:?}", item_name, expr, e);
-                    },
-                    _ => {
-                        status.attributes_failed_to_compute += 1;
-                        log_error!(xc, "error:{:?}:{:?}:{:?}", item_name, expr, e);
-                    }
+        if expr.eval_on_cell(&mut root, xc)
+            .and_then(|v| output_expr_value(item_name, expr, &v, out, xc))
+            .map(|_| { status.attributes_computed_ok += 1; })
+            .or_else(|e| match e {
+                Error::NotApplicable => {
+                    status.attributes_not_applicable += 1;
+                    log_warn!(xc, "warning:{:?}:{:?}:{:?}", item_name, expr, e);
+                    Ok(())
+                },
+                Error::Output(oe) => {
+                    status.output_error = true;
+                    log_crit!(xc, "fatal:{:?}:{:?}:{:?}", item_name, expr, oe);
+                    Err(())
+                },
+                _ => {
+                    status.attributes_failed_to_compute += 1;
+                    log_error!(xc, "error:{:?}:{:?}:{:?}", item_name, expr, e);
+                    Ok(())
                 }
-            },
+            }).is_err() {
+            break;
         }
     }
     status
@@ -453,6 +478,7 @@ fn parse_eval_expr_list<'a>(
 /* run **********************************************************************/
 fn run<'x>(
     invocation: &'x Invocation,
+    out: &mut (dyn Write + '_),
     xc: &mut ExecutionContext<'x>
 ) -> Result<(), ExitCode> {
     if invocation.verbose {
@@ -469,7 +495,10 @@ fn run<'x>(
     log_debug!(xc, "expressions: {:?}", expressions);
 
     for item in &invocation.items {
-        summary.add(&process_item(item, expressions.as_slice(), xc));
+        summary.add(&process_item(item, expressions.as_slice(), out, xc));
+        if summary.output_error {
+            break;
+        }
     }
     if invocation.verbose {
         log_info!(xc, "accessible items: {}", summary.accessible_items);
@@ -497,16 +526,18 @@ fn main() {
     let a = Malloc::new();
     let err = stderr();
     let mut log = err.lock();
+    let out = stdout();
+    let mut out = out.lock();
     let mut xc = ExecutionContext::new(
         a.to_ref(),
         a.to_ref(),
         &mut log,
         if invocation.verbose { LogLevel::Debug } else { LogLevel::Warning },
     );
-    run(&invocation, &mut xc)
-    .unwrap_or_else(|e| {
-        log_debug!(xc, "* exiting with code {}", e.0);
-        std::process::exit(e.0 as i32);
-    });
+    run(&invocation, &mut out, &mut xc)
+        .unwrap_or_else(|e| {
+            log_debug!(xc, "* exiting with code {}", e.0);
+            std::process::exit(e.0 as i32);
+        });
 }
 
