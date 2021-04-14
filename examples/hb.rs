@@ -35,6 +35,7 @@ use halfbit::log_error;
 use halfbit::log_crit;
 
 use halfbit::data_cell;
+use halfbit::data_cell::U64Cell;
 use halfbit::data_cell::DataCell;
 use halfbit::data_cell::DataCellOps;
 use halfbit::data_cell::Error;
@@ -131,7 +132,11 @@ impl<'a> DataCellOps for Item<'a> {
         xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
         match property_name {
-            "fourty_two" => Ok(DataCell::U64(42, num_fmt::MiniNumFmtPack::default())),
+            "fourty_two" => Ok(DataCell::U64(
+                    U64Cell{
+                        n: 42,
+                        fmt_pack: num_fmt::MiniNumFmtPack::default()
+                    })),
             "first_byte" => extract_first_byte(&self, xc),
             _ => Err(data_cell::Error::NotApplicable),
         }
@@ -192,12 +197,15 @@ fn extract_first_byte <'a, 'x>(
     f.seek(SeekFrom::Start(0), xc)
     .map_err(|e| IOPartialError::from_error_and_size(e, 0))
     .and_then(|_| f.read_u8(xc))
-    .map(|v| DataCell::U64(v as u64, num_fmt::MiniNumFmtPack::new(
+    .map(|v| DataCell::U64(U64Cell {
+        n: v as u64,
+        fmt_pack: num_fmt::MiniNumFmtPack::new(
             num_fmt::Radix::new(16).unwrap(),
             num_fmt::RadixNotation::DefaultExplicitPrefix,
             num_fmt::MinDigitCount::new(2).unwrap(),
             num_fmt::PositiveSign::Hidden,
-            num_fmt::ZeroSign::Hidden)))
+            num_fmt::ZeroSign::Hidden)
+    }))
     .map_err(|e|
         if e.get_error_code() == IOErrorCode::UnexpectedEnd {
             data_cell::Error::NotApplicable

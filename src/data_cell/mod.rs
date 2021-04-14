@@ -38,9 +38,31 @@ pub trait DataCellOps: fmt::Debug {
 }
 
 #[derive(Debug)]
+pub struct U64Cell {
+    pub n: u64,
+    pub fmt_pack: MiniNumFmtPack,
+}
+
+impl DataCellOps for U64Cell {
+
+    fn to_human_readable<'w, 'x>(
+        &self,
+        w: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        let mut buf = [0_u8; 256];
+        w.write_all(
+            self.fmt_pack.int_fmt(self.n, &mut buf).unwrap().as_bytes(),
+            xc
+        ).map_err(|e| Error::Output(e.to_error()))
+    }
+
+}
+
+#[derive(Debug)]
 pub enum DataCell<'d> {
     Nothing,
-    U64(u64, MiniNumFmtPack),
+    U64(U64Cell),
     Id(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
 }
@@ -64,14 +86,10 @@ impl<'d> DataCellOps for DataCell<'d> {
     ) -> Result<(), Error<'x>> {
         match self {
             DataCell::Nothing => Ok(()),
-            DataCell::U64(v, nf) => {
-                let mut buf = [0_u8; 256];
-                w.write_all(nf.int_fmt(*v, &mut buf).unwrap().as_bytes(), xc)
-                    .map_err(|e| Error::IO(e.to_error()))
-            },
+            DataCell::U64(v) => v.to_human_readable(w, xc),
             DataCell::Id(s) => {
                 w.write_all(s.as_bytes(), xc)
-                    .map_err(|e| Error::IO(e.to_error()))
+                    .map_err(|e| Error::Output(e.to_error()))
             },
             DataCell::Dyn(v) => v.deref().to_human_readable(w, xc),
         }
