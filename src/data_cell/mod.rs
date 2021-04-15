@@ -14,7 +14,7 @@ pub mod eval;
 pub enum Error<'e> {
     NotApplicable,
     IO(IOError<'e>),
-    Output(IOError<'e>), // used by report-generating functions like to_human_readable
+    Output(IOError<'e>), // used by report-generating functions like output_as_human_readable
 }
 
 pub trait DataCellOps: fmt::Debug {
@@ -27,7 +27,7 @@ pub trait DataCellOps: fmt::Debug {
         Err(Error::NotApplicable)
     }
 
-    fn to_human_readable<'w, 'x>(
+    fn output_as_human_readable<'w, 'x>(
         &self,
         _out: &mut (dyn Write + 'w),
         _xc: &mut ExecutionContext<'x>,
@@ -45,7 +45,7 @@ pub struct U64Cell {
 
 impl DataCellOps for U64Cell {
 
-    fn to_human_readable<'w, 'x>(
+    fn output_as_human_readable<'w, 'x>(
         &self,
         w: &mut (dyn Write + 'w),
         xc: &mut ExecutionContext<'x>,
@@ -79,19 +79,19 @@ impl<'d> DataCellOps for DataCell<'d> {
         }
     }
 
-    fn to_human_readable<'w, 'x>(
+    fn output_as_human_readable<'w, 'x>(
         &self,
         w: &mut (dyn Write + 'w),
         xc: &mut ExecutionContext<'x>,
     ) -> Result<(), Error<'x>> {
         match self {
             DataCell::Nothing => Ok(()),
-            DataCell::U64(v) => v.to_human_readable(w, xc),
+            DataCell::U64(v) => v.output_as_human_readable(w, xc),
             DataCell::Id(s) => {
                 w.write_all(s.as_bytes(), xc)
                     .map_err(|e| Error::Output(e.to_error()))
             },
-            DataCell::Dyn(v) => v.deref().to_human_readable(w, xc),
+            DataCell::Dyn(v) => v.deref().output_as_human_readable(w, xc),
         }
     }
 

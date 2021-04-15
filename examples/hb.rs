@@ -401,7 +401,7 @@ fn output_expr_value<'x>(
     write!(out, "{:?}\t{}\t", item_name, expr)
         .map_err(|_| Error::Output(
                     IOError::with_str(IOErrorCode::Unsuccessful, "output error")))
-        .and_then(|_| value.to_human_readable(out, xc))
+        .and_then(|_| value.output_as_human_readable(out, xc))
         .and_then(|_| out.write_all(b"\n", xc).map_err(|e| Error::Output(e.to_error())))
 }
 
