@@ -1,5 +1,8 @@
 use core::fmt;
 use core::ops::Deref;
+use core::cell::RefCell;
+use core::cell::BorrowError;
+use core::cell::BorrowMutError;
 
 use crate::ExecutionContext;
 use crate::mm::Rc;
@@ -15,6 +18,39 @@ pub enum Error<'e> {
     NotApplicable,
     IO(IOError<'e>),
     Output(IOError<'e>), // used by report-generating functions like output_as_human_readable
+    CellUnavailable, // borrow error on a RefCell while computing something
+}
+
+impl From<BorrowError> for Error<'_> {
+    fn from(_: BorrowError) -> Self {
+        Error::CellUnavailable
+    }
+}
+
+impl From<BorrowMutError> for Error<'_> {
+    fn from(_: BorrowMutError) -> Self {
+        Error::CellUnavailable
+    }
+}
+
+pub trait DataCellOpsMut: fmt::Debug {
+
+    fn get_property_mut<'x>(
+        &mut self,
+        _property_name: &str,
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        Err(Error::NotApplicable)
+    }
+
+    fn output_as_human_readable_mut<'w, 'x>(
+        &mut self,
+        _out: &mut (dyn Write + 'w),
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        Err(Error::NotApplicable)
+    }
+
 }
 
 pub trait DataCellOps: fmt::Debug {
@@ -33,6 +69,52 @@ pub trait DataCellOps: fmt::Debug {
         _xc: &mut ExecutionContext<'x>,
     ) -> Result<(), Error<'x>> {
         Err(Error::NotApplicable)
+    }
+
+}
+
+impl<T> DataCellOps for RefCell<T>
+where T: DataCellOpsMut {
+
+    fn get_property<'x>(
+        &self,
+        property_name: &str,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        let mut c = self.try_borrow_mut()?;
+        c.get_property_mut(property_name, xc)
+    }
+
+    fn output_as_human_readable<'w, 'x>(
+        &self,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        let mut c = self.try_borrow_mut()?;
+        c.output_as_human_readable_mut(out, xc)
+    }
+
+}
+
+impl<'a, T> DataCellOps for Rc<'a, T>
+where T: DataCellOps {
+
+    fn get_property<'x>(
+        &self,
+        property_name: &str,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        let c = self.as_ref();
+        c.get_property(property_name, xc)
+    }
+
+    fn output_as_human_readable<'w, 'x>(
+        &self,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        let c = self.as_ref();
+        c.output_as_human_readable(out, xc)
     }
 
 }
@@ -68,6 +150,7 @@ pub enum DataCell<'d> {
 }
 
 impl<'d> DataCellOps for DataCell<'d> {
+
     fn get_property<'x>(
         &self,
         property_name: &str,
