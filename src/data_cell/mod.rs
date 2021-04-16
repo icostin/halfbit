@@ -234,7 +234,7 @@ pub enum DataCell<'d> {
     Nothing,
     U64(U64Cell),
     ByteVector(ByteVectorCell<'d>),
-    Id(&'d str),
+    StaticId(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
 }
 
@@ -260,7 +260,7 @@ impl<'d> DataCellOps for DataCell<'d> {
             DataCell::Nothing => Ok(()),
             DataCell::U64(v) => v.output_as_human_readable(w, xc),
             DataCell::ByteVector(v) => v.output_as_human_readable(w, xc),
-            DataCell::Id(s) => {
+            DataCell::StaticId(s) => {
                 w.write_all(s.as_bytes(), xc)
                     .map_err(|e| Error::Output(e.to_error()))
             },
