@@ -198,7 +198,17 @@ impl<'a> DataCellOpsMut for ByteVector<'a> {
         out: &mut (dyn Write + 'w),
         _xc: &mut ExecutionContext<'x>,
     ) -> Result<(), Error<'x>> {
-        write!(out, "{:?}", self.0.as_slice())?;
+        write!(out, "b\"")?;
+        for &b in self.0.as_slice() {
+            if b == 0x22 || b == 0x5C {
+                write!(out, "\\{}", b as char)?;
+            } else if b >= 0x20_u8 && b <= 0x7E_u8 {
+                write!(out, "{}", b as char)?;
+            } else {
+                write!(out, "\\x{:02X}", b)?;
+            }
+        }
+        write!(out, "\"")?;
         Ok(())
     }
 
