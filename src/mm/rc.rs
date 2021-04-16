@@ -10,7 +10,7 @@ use crate::num::Pow2Usize;
 
 use super::Allocator;
 use super::AllocatorRef;
-use super::AllocError;
+use super::HbAllocError;
 
 struct RcCtlBlock<'a> {
     strong: usize,
@@ -53,7 +53,7 @@ where T: Sized {
     pub fn new(
         allocator: AllocatorRef<'a>,
         value: T,
-    ) -> Result<Self, (AllocError, T)> {
+    ) -> Result<Self, (HbAllocError, T)> {
         let size = core::mem::size_of::<RcData<'a, T>>();
         let size = NonZeroUsize::new(size).unwrap();
 
@@ -271,7 +271,7 @@ mod tests {
         let mut buffer = [0u8; 8];
         let a = SingleAlloc::new(&mut buffer);
         let (e, v) = Rc::new(a.to_ref(), 123_u32).unwrap_err();
-        assert_eq!(e, AllocError::NotEnoughMemory);
+        assert_eq!(e, HbAllocError::NotEnoughMemory);
         assert_eq!(v, 123_u32);
     }
 

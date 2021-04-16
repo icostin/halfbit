@@ -4,7 +4,7 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 #[derive(PartialEq, Debug)]
-pub enum AllocError {
+pub enum HbAllocError {
     InvalidAlignment, // alignment not a power of 2
     AlignedSizeTooBig, // aligned size overflows usize
     UnsupportedAlignment, // allocator cannot guarantee requested alignment
@@ -14,14 +14,14 @@ pub enum AllocError {
     UnsupportedOperation, // alloc, resize, free not supported
 }
 
-impl From<AllocError> for core::fmt::Error {
-    fn from(_e: AllocError) -> Self {
+impl From<HbAllocError> for core::fmt::Error {
+    fn from(_e: HbAllocError) -> Self {
         Self { }
     }
 }
 
-impl<T> From<(AllocError, T)> for AllocError {
-    fn from(src: (AllocError, T)) -> Self {
+impl<T> From<(HbAllocError, T)> for HbAllocError {
+    fn from(src: (HbAllocError, T)) -> Self {
         src.0
     }
 }
@@ -31,7 +31,7 @@ pub unsafe trait Allocator {
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         panic!("alloc not implemented");
     }
     unsafe fn free(
@@ -48,7 +48,7 @@ pub unsafe trait Allocator {
         _current_size: NonZeroUsize,
         _new_larger_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         panic!("grow not implemented");
     }
     unsafe fn shrink(
@@ -57,7 +57,7 @@ pub unsafe trait Allocator {
         _current_size: NonZeroUsize,
         _new_smaller_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         panic!("shrink not implemented");
     }
     fn supports_contains(&self) -> bool { false }
@@ -91,7 +91,7 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         self.allocator.alloc(size, align)
     }
     unsafe fn free(
@@ -107,7 +107,7 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
         current_size: NonZeroUsize,
         new_larger_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         self.allocator.grow(ptr, current_size, new_larger_size, align)
     }
     unsafe fn shrink(
@@ -116,7 +116,7 @@ unsafe impl<'a> Allocator for AllocatorRef<'a> {
         current_size: NonZeroUsize,
         new_smaller_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         self.allocator.shrink(ptr, current_size, new_smaller_size, align)
     }
     fn supports_contains(&self) -> bool {
@@ -168,7 +168,7 @@ pub use rc::Rc as Rc;
 pub use rc::RcWeak as RcWeak;
 
 impl<'a> AllocatorRef<'a> {
-    pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (AllocError, T)> {
+    pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (HbAllocError, T)> {
         Box::new(self, v)
     }
 
@@ -182,7 +182,7 @@ impl<'a> AllocatorRef<'a> {
         current_size: usize,
         new_larger_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         if current_size == 0 {
             self.alloc(new_larger_size, align)
         } else {
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn fmt_error_from_alloc_error() {
-        let _fe: core::fmt::Error = AllocError::OperationFailed.into();
+        let _fe: core::fmt::Error = HbAllocError::OperationFailed.into();
     }
 
     extern crate std;
@@ -302,7 +302,7 @@ mod tests {
             _current_size: NonZeroUsize,
             _new_smaller_size: NonZeroUsize,
             _align: Pow2Usize
-        ) -> Result<NonNull<u8>, AllocError> {
+        ) -> Result<NonNull<u8>, HbAllocError> {
             Ok(NonNull::new(0xA1B2C3D4_usize as *mut u8).unwrap())
         }
     }
@@ -354,7 +354,7 @@ mod tests {
             &self,
             size: NonZeroUsize,
             _align: Pow2Usize
-        ) -> Result<NonNull<u8>, AllocError> {
+        ) -> Result<NonNull<u8>, HbAllocError> {
             Ok(NonNull::new((size.get() * 1000 + size.get()) as *mut u8).unwrap())
         }
         unsafe fn grow(
@@ -363,7 +363,7 @@ mod tests {
             current_size: NonZeroUsize,
             new_larger_size: NonZeroUsize,
             _align: Pow2Usize
-        ) -> Result<NonNull<u8>, AllocError> {
+        ) -> Result<NonNull<u8>, HbAllocError> {
             Ok(NonNull::new(((ptr.as_ptr() as usize) - current_size.get() + new_larger_size.get()) as *mut u8).unwrap())
         }
     }

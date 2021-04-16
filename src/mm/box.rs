@@ -9,7 +9,7 @@ use crate::num::Pow2Usize;
 
 use super::Allocator;
 use super::AllocatorRef;
-use super::AllocError;
+use super::HbAllocError;
 
 pub struct Box<'a, T: ?Sized> {
     allocator: AllocatorRef<'a>,
@@ -20,7 +20,7 @@ impl<'a, T: Sized> Box<'a, T> {
     pub fn new(
         allocator: AllocatorRef<'a>,
         value: T,
-    ) -> Result<Self, (AllocError, T)> {
+    ) -> Result<Self, (HbAllocError, T)> {
         let size = core::mem::size_of::<T>();
         if size == 0 {
             return Ok(Box{ allocator: allocator, ptr: NonNull::dangling() });
@@ -123,7 +123,7 @@ mod tests {
         let a = no_sup_allocator();
         let b = Box::new(a.to_ref(), 0x12345_u32);
         let (e, v) = b.unwrap_err();
-        assert_eq!(e, AllocError::UnsupportedOperation);
+        assert_eq!(e, HbAllocError::UnsupportedOperation);
         assert_eq!(v, 0x12345_u32);
     }
 

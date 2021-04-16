@@ -4,7 +4,7 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use super::Allocator;
-use super::AllocError;
+use super::HbAllocError;
 
 pub struct NoSupAllocator { }
 
@@ -13,8 +13,8 @@ unsafe impl Allocator for NoSupAllocator {
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
-        Err(AllocError::UnsupportedOperation)
+    ) -> Result<NonNull<u8>, HbAllocError> {
+        Err(HbAllocError::UnsupportedOperation)
     }
     unsafe fn free(
         &self,
@@ -29,7 +29,7 @@ unsafe impl Allocator for NoSupAllocator {
         _current_size: NonZeroUsize,
         _new_larger_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         panic!("cannot grow what hasn't been allocated!");
     }
     unsafe fn shrink(
@@ -38,7 +38,7 @@ unsafe impl Allocator for NoSupAllocator {
         _current_size: NonZeroUsize,
         _new_smaller_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         panic!("cannot shrink what hasn't been allocated!");
     }
     fn supports_contains(&self) -> bool { true }
@@ -69,7 +69,7 @@ mod tests {
                 Pow2Usize::new(1).unwrap()) 
         };
         assert!(r.is_err());
-        assert_eq!(r.unwrap_err(), AllocError::UnsupportedOperation);
+        assert_eq!(r.unwrap_err(), HbAllocError::UnsupportedOperation);
     }
 
     #[test]

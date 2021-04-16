@@ -1,7 +1,7 @@
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 use super::NonNull;
-use super::AllocError;
+use super::HbAllocError;
 use super::Allocator;
 
 pub struct NopAllocator { }
@@ -13,8 +13,8 @@ unsafe impl Allocator for NopAllocator {
         &self,
         _size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
-        Err(AllocError::UnsupportedOperation)
+    ) -> Result<NonNull<u8>, HbAllocError> {
+        Err(HbAllocError::UnsupportedOperation)
     }
     unsafe fn free(
         &self,
@@ -28,8 +28,8 @@ unsafe impl Allocator for NopAllocator {
         _current_size: NonZeroUsize,
         _new_larger_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
-        Err(AllocError::UnsupportedOperation)
+    ) -> Result<NonNull<u8>, HbAllocError> {
+        Err(HbAllocError::UnsupportedOperation)
     }
     unsafe fn shrink(
         &self,
@@ -37,8 +37,8 @@ unsafe impl Allocator for NopAllocator {
         _current_size: NonZeroUsize,
         _new_smaller_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
-        Err(AllocError::UnsupportedOperation)
+    ) -> Result<NonNull<u8>, HbAllocError> {
+        Err(HbAllocError::UnsupportedOperation)
     }
     fn supports_contains(&self) -> bool { false }
     fn contains(&self, _ptr: NonNull<u8>) -> bool {
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn alloc_not_supported() {
-        assert_eq!(unsafe { NOP_ALLOCATOR.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), AllocError::UnsupportedOperation);
+        assert_eq!(unsafe { NOP_ALLOCATOR.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), HbAllocError::UnsupportedOperation);
     }
 
     #[test]
@@ -68,12 +68,12 @@ mod tests {
 
     #[test]
     fn grow_not_supported() {
-        assert_eq!(unsafe { NOP_ALLOCATOR.grow(NonNull::dangling(), NonZeroUsize::new(1).unwrap(), NonZeroUsize::new(2).unwrap(), Pow2Usize::one()) }.unwrap_err(), AllocError::UnsupportedOperation);
+        assert_eq!(unsafe { NOP_ALLOCATOR.grow(NonNull::dangling(), NonZeroUsize::new(1).unwrap(), NonZeroUsize::new(2).unwrap(), Pow2Usize::one()) }.unwrap_err(), HbAllocError::UnsupportedOperation);
     }
 
     #[test]
     fn shrink_not_supported() {
-        assert_eq!(unsafe { NOP_ALLOCATOR.shrink(NonNull::dangling(), NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), AllocError::UnsupportedOperation);
+        assert_eq!(unsafe { NOP_ALLOCATOR.shrink(NonNull::dangling(), NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), HbAllocError::UnsupportedOperation);
     }
 
     #[test]

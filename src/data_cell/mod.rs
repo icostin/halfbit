@@ -7,7 +7,7 @@ use core::cell::BorrowMutError;
 
 use crate::ExecutionContext;
 use crate::mm::AllocatorRef;
-use crate::mm::AllocError;
+use crate::mm::HbAllocError;
 use crate::mm::Rc;
 use crate::mm::Vector;
 use crate::io::IOError;
@@ -23,7 +23,7 @@ pub mod eval;
 #[derive(Debug, PartialEq)]
 pub enum Error<'e> {
     NotApplicable,
-    Alloc(AllocError),
+    Alloc(HbAllocError),
     IO(IOError<'e>),
     Output(IOError<'e>), // used by report-generating functions like output_as_human_readable
     CellUnavailable, // borrow error on a RefCell while computing something
@@ -50,14 +50,14 @@ impl From<BorrowMutError> for Error<'_> {
     }
 }
 
-impl From<AllocError> for Error<'_> {
-    fn from(e: AllocError) -> Self {
+impl From<HbAllocError> for Error<'_> {
+    fn from(e: HbAllocError) -> Self {
         Error::Alloc(e)
     }
 }
 
-impl<T> From<(AllocError, T)> for Error<'_> {
-    fn from(e: (AllocError, T)) -> Self {
+impl<T> From<(HbAllocError, T)> for Error<'_> {
+    fn from(e: (HbAllocError, T)) -> Self {
         Error::Alloc(e.0)
     }
 }
@@ -221,7 +221,7 @@ impl<'a> ByteVectorCell<'a> {
     pub fn from_bytes(
         allocator: AllocatorRef<'a>,
         data: &[u8]
-    ) -> Result<Self, AllocError> {
+    ) -> Result<Self, HbAllocError> {
         let bv = ByteVector(Vector::from_slice(allocator, data)?);
         Ok(Rc::new(allocator, RefCell::new(bv))?)
     }

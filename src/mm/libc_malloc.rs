@@ -1,7 +1,7 @@
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 use super::Allocator;
-use super::AllocError;
+use super::HbAllocError;
 use super::NonNull;
 
 const USIZE_BYTE_COUNT: usize = core::mem::size_of::<usize>();
@@ -20,13 +20,13 @@ unsafe impl Allocator for Malloc {
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         if align.get() > MALLOC_ALIGNMENT {
-            Err(AllocError::UnsupportedAlignment)
+            Err(HbAllocError::UnsupportedAlignment)
         } else {
             NonNull::new(
                 libc::malloc(size.get() as libc::size_t) as *mut u8
-            ).ok_or(AllocError::NotEnoughMemory)
+            ).ok_or(HbAllocError::NotEnoughMemory)
         }
     }
     unsafe fn free(
@@ -43,12 +43,12 @@ unsafe impl Allocator for Malloc {
         _current_size: NonZeroUsize,
         new_larger_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         NonNull::new(
             libc::realloc(
                 ptr.as_ptr() as *mut libc::c_void,
                 new_larger_size.get() as libc::size_t) as *mut u8
-        ).ok_or(AllocError::NotEnoughMemory)
+        ).ok_or(HbAllocError::NotEnoughMemory)
     }
     unsafe fn shrink(
         &self,
@@ -56,12 +56,12 @@ unsafe impl Allocator for Malloc {
         _current_size: NonZeroUsize,
         new_smaller_size: NonZeroUsize,
         _align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         NonNull::new(
             libc::realloc(
                 ptr.as_ptr() as *mut libc::c_void,
                 new_smaller_size.get() as libc::size_t) as *mut u8
-        ).ok_or(AllocError::NotEnoughMemory)
+        ).ok_or(HbAllocError::NotEnoughMemory)
     }
     fn supports_contains(&self) -> bool { false }
     fn contains(
@@ -91,7 +91,7 @@ mod tests {
                 NonZeroUsize::new(usize::MAX).unwrap(),
                 Pow2Usize::one()
             ) }.unwrap_err(),
-            AllocError::NotEnoughMemory);
+            HbAllocError::NotEnoughMemory);
     }
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
             NonZeroUsize::new(1).unwrap(),
             Pow2Usize::from_smaller_or_equal_usize(MALLOC_ALIGNMENT + 1).unwrap()
         ) }.unwrap_err();
-        assert_eq!(e1, AllocError::UnsupportedAlignment);
+        assert_eq!(e1, HbAllocError::UnsupportedAlignment);
     }
 
     #[test]

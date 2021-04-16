@@ -1,6 +1,6 @@
 use super::Vector;
 use super::AllocatorRef;
-use super::AllocError;
+use super::HbAllocError;
 use core::fmt::Debug;
 use core::fmt::Write as FmtWrite;
 use core::fmt::Result as FmtResult;
@@ -28,21 +28,21 @@ impl<'a> String<'a> {
     pub fn as_str(&self) -> &str {
         unsafe { core::str::from_utf8_unchecked(self.data.as_slice()) }
     }
-    pub fn push(&mut self, c: char) -> Result<(), AllocError> {
+    pub fn push(&mut self, c: char) -> Result<(), HbAllocError> {
         let mut buf = [0_u8; 4];
         self.data.append_from_slice(c.encode_utf8(&mut buf).as_bytes())
     }
     pub fn append_str(
         &mut self,
         s: &str,
-    ) -> Result<(), AllocError> {
+    ) -> Result<(), HbAllocError> {
         self.data.append_from_slice(s.as_bytes())?;
         Ok(())
     }
     pub fn dup<'b>(
         &self,
         allocator: AllocatorRef<'b>,
-    ) -> Result<String<'b>, AllocError> {
+    ) -> Result<String<'b>, HbAllocError> {
         let mut o = String::new(allocator);
         o.append_str(self.as_str())?;
         Ok(o)
@@ -116,7 +116,7 @@ mod tests {
         let b = String::map_str("abc /\\ \"def\"");
 
         use super::super::NOP_ALLOCATOR;
-        assert_eq!(b.dup(NOP_ALLOCATOR.to_ref()).unwrap_err(), AllocError::UnsupportedOperation);
+        assert_eq!(b.dup(NOP_ALLOCATOR.to_ref()).unwrap_err(), HbAllocError::UnsupportedOperation);
 
         let c = b.dup(a.to_ref()).unwrap();
         assert_eq!(c.as_str(), "abc /\\ \"def\"");

@@ -5,7 +5,7 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use super::Allocator;
-use super::AllocError;
+use super::HbAllocError;
 
 pub struct SingleAllocState<'a> {
     buffer: &'a mut [u8],
@@ -57,15 +57,15 @@ unsafe impl<'a> Allocator for SingleAlloc<'a> {
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         let state: &'a mut SingleAllocState<'a> = &mut
             *(self.state.get() as *mut SingleAllocState<'a>);
         if state.used != 0 {
-            Err(AllocError::OperationFailed)
+            Err(HbAllocError::OperationFailed)
         } else if ((state.buffer.as_ptr() as usize) & (align.get() - 1)) != 0 {
-            Err(AllocError::UnsupportedAlignment)
+            Err(HbAllocError::UnsupportedAlignment)
         } else if size.get() > state.buffer.len() {
-            Err(AllocError::NotEnoughMemory)
+            Err(HbAllocError::NotEnoughMemory)
         } else {
             state.used = size.get();
             Ok(NonNull::new(state.buffer.as_mut_ptr()).unwrap())
@@ -87,12 +87,12 @@ unsafe impl<'a> Allocator for SingleAlloc<'a> {
         current_size: NonZeroUsize,
         new_larger_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         self.check_allocation(ptr, current_size, align);
         let state: &'a mut SingleAllocState<'a> = &mut 
             *(self.state.get() as *mut SingleAllocState<'a>);
         if new_larger_size.get() > state.buffer.len() {
-            Err(AllocError::NotEnoughMemory)
+            Err(HbAllocError::NotEnoughMemory)
         } else {
             state.used = new_larger_size.get();
             Ok(ptr)
@@ -104,7 +104,7 @@ unsafe impl<'a> Allocator for SingleAlloc<'a> {
         current_size: NonZeroUsize,
         new_smaller_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         self.check_allocation(ptr, current_size, align);
         let state: &'a mut SingleAllocState<'a> = &mut
             *(self.state.get() as *mut SingleAllocState<'a>);
@@ -166,7 +166,7 @@ mod tests {
         let r = unsafe {
             a.alloc(NonZeroUsize::new(8).unwrap(), Pow2Usize::max())
         };
-        assert_eq!(r.unwrap_err(), AllocError::UnsupportedAlignment);
+        assert_eq!(r.unwrap_err(), HbAllocError::UnsupportedAlignment);
     }
 
     #[test]
@@ -176,7 +176,7 @@ mod tests {
         let r = unsafe {
             a.alloc(NonZeroUsize::new(8).unwrap(), Pow2Usize::new(1).unwrap())
         };
-        assert_eq!(r.unwrap_err(), AllocError::NotEnoughMemory);
+        assert_eq!(r.unwrap_err(), HbAllocError::NotEnoughMemory);
     }
 
     #[test]
@@ -289,7 +289,7 @@ mod tests {
             )
         };
         assert!(r.is_err());
-        assert_eq!(r.unwrap_err(), AllocError::NotEnoughMemory);
+        assert_eq!(r.unwrap_err(), HbAllocError::NotEnoughMemory);
     }
 
     #[test]
@@ -341,7 +341,7 @@ mod tests {
         let mut buf = [0u8; 7];
         let a = single_alloc(&mut buf);
         let _p = unsafe { a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap();
-        assert_eq!(unsafe { a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), AllocError::OperationFailed);
+        assert_eq!(unsafe { a.alloc(NonZeroUsize::new(1).unwrap(), Pow2Usize::one()) }.unwrap_err(), HbAllocError::OperationFailed);
     }
 
 }

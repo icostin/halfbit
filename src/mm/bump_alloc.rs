@@ -7,7 +7,7 @@ use crate::num::usize_align_up;
 
 use super::NonNull;
 use super::Allocator;
-use super::AllocError;
+use super::HbAllocError;
 
 struct BumpAllocatorState<'a> {
     begin_addr: usize,
@@ -56,7 +56,7 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
         &self,
         size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         let state: &'a mut BumpAllocatorState<'a> = &mut
             *(self.state.get() as *mut BumpAllocatorState<'a>);
         usize_align_up(state.current_addr, align)
@@ -66,7 +66,7 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
                 state.current_addr = v;
                 NonNull::new(addr as *mut u8)
             } else { None })
-            .ok_or(AllocError::NotEnoughMemory)
+            .ok_or(HbAllocError::NotEnoughMemory)
     }
     unsafe fn free(
         &self,
@@ -86,7 +86,7 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
         current_size: NonZeroUsize,
         new_larger_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         if self.is_last_allocation(ptr, current_size) &&
             align.is_non_null_ptr_aligned(ptr) {
             let state: &'a mut BumpAllocatorState<'a> = &mut 
@@ -96,7 +96,7 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
                 state.current_addr += extra_size;
                 Ok(ptr)
             } else {
-                Err(AllocError::NotEnoughMemory)
+                Err(HbAllocError::NotEnoughMemory)
             }
         } else {
             let new_ptr = self.alloc(new_larger_size, align)?;
@@ -110,9 +110,9 @@ unsafe impl<'a> Allocator for BumpAllocator<'a> {
         current_size: NonZeroUsize,
         new_smaller_size: NonZeroUsize,
         align: Pow2Usize
-    ) -> Result<NonNull<u8>, AllocError> {
+    ) -> Result<NonNull<u8>, HbAllocError> {
         if !align.is_non_null_ptr_aligned(ptr) {
-            Err(AllocError::UnsupportedAlignment)
+            Err(HbAllocError::UnsupportedAlignment)
         } else {
             if self.is_last_allocation(ptr, current_size) {
                 let state: &'a mut BumpAllocatorState<'a> = &mut
@@ -164,7 +164,7 @@ mod tests {
             unsafe {
                 a.alloc(NonZeroUsize::new(2).unwrap(), Pow2Usize::one())
             }.unwrap_err(),
-            AllocError::NotEnoughMemory);
+            HbAllocError::NotEnoughMemory);
     }
 
     #[test]
@@ -225,7 +225,7 @@ mod tests {
                 NonZeroUsize::new(3).unwrap(),
                 Pow2Usize::one())
         }.unwrap_err();
-        assert_eq!(e2, AllocError::NotEnoughMemory);
+        assert_eq!(e2, HbAllocError::NotEnoughMemory);
     }
 
     #[test]
@@ -281,7 +281,7 @@ mod tests {
                 NonZeroUsize::new(3).unwrap(),
                 Pow2Usize::one())
         }.unwrap_err();
-        assert_eq!(e3, AllocError::NotEnoughMemory);
+        assert_eq!(e3, HbAllocError::NotEnoughMemory);
         assert_eq!(unsafe { *p1.as_ptr() }, 0x5A_u8);
         assert_eq!(unsafe { *p2.as_ptr() }, 0xA5_u8);
     }
@@ -352,7 +352,7 @@ mod tests {
                 Pow2Usize::max()
             )
         }.unwrap_err();
-        assert_eq!(e2, AllocError::UnsupportedAlignment);
+        assert_eq!(e2, HbAllocError::UnsupportedAlignment);
     }
 
     #[test]

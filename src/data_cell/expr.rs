@@ -6,7 +6,7 @@ use core::fmt::Result as FmtResult;
 use crate::ExecutionContext;
 use crate::mm::Vector;
 use crate::mm::String;
-use crate::mm::AllocError;
+use crate::mm::HbAllocError;
 use crate::error::Error;
 use crate::xc_err;
 
@@ -14,7 +14,7 @@ use crate::xc_err;
 pub enum ParseErrorData {
     ReachedEnd,
     NotImplemented,
-    Alloc(AllocError),
+    Alloc(HbAllocError),
     IllegalChar(char),
     UnexpectedChar(char),
     UnexpectedToken,
@@ -148,14 +148,14 @@ pub struct Parser<'s, 't> {
     current_column: u32,
 }
 
-impl<'a> From<AllocError> for ParseError<'a> {
-    fn from(e: AllocError) -> Self {
+impl<'a> From<HbAllocError> for ParseError<'a> {
+    fn from(e: HbAllocError) -> Self {
         ParseError::with_str(ParseErrorData::Alloc(e), "alloc error")
     }
 }
 
-impl<'a, T> From<(AllocError, T)> for ParseError<'a> {
-    fn from(e: (AllocError, T)) -> Self {
+impl<'a, T> From<(HbAllocError, T)> for ParseError<'a> {
+    fn from(e: (HbAllocError, T)) -> Self {
         ParseError::with_str(ParseErrorData::Alloc(e.0), "alloc error")
     }
 }
@@ -695,10 +695,10 @@ mod tests {
 
     #[test]
     fn parse_error_from_alloc() {
-        let pe: ParseError<'_> = AllocError::NotEnoughMemory.into();
-        assert_eq!(*pe.get_data(), ParseErrorData::Alloc(AllocError::NotEnoughMemory));
-        let pe: ParseError<'_> = (AllocError::UnsupportedOperation, 0).into();
-        assert_eq!(*pe.get_data(), ParseErrorData::Alloc(AllocError::UnsupportedOperation));
+        let pe: ParseError<'_> = HbAllocError::NotEnoughMemory.into();
+        assert_eq!(*pe.get_data(), ParseErrorData::Alloc(HbAllocError::NotEnoughMemory));
+        let pe: ParseError<'_> = (HbAllocError::UnsupportedOperation, 0).into();
+        assert_eq!(*pe.get_data(), ParseErrorData::Alloc(HbAllocError::UnsupportedOperation));
     }
 
     #[test]
@@ -909,11 +909,11 @@ mod tests {
 
     #[test]
     fn identifier_token_oom() {
-        use crate::mm::AllocError;
+        use crate::mm::HbAllocError;
         let xc = ExecutionContext::nop();
         let src = Source::new("  best.worst", "-");
         let mut p = Parser::new(&src, &xc);
-        assert_eq!(*p.parse_basic_token().unwrap_err().get_data(), ParseErrorData::Alloc(AllocError::UnsupportedOperation));
+        assert_eq!(*p.parse_basic_token().unwrap_err().get_data(), ParseErrorData::Alloc(HbAllocError::UnsupportedOperation));
     }
 
     #[test]

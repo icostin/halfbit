@@ -7,7 +7,7 @@ use crate::num::Pow2Usize;
 
 use super::Allocator;
 use super::AllocatorRef;
-use super::AllocError;
+use super::HbAllocError;
 
 #[derive(Debug)]
 pub struct Vector<'a, T> {
@@ -55,12 +55,12 @@ impl<'a, T> Vector<'a, T> {
         self.len == 0
     }
 
-    pub fn reserve(&mut self, count: usize) -> Result<(), AllocError> {
+    pub fn reserve(&mut self, count: usize) -> Result<(), HbAllocError> {
         let item_size = core::mem::size_of::<T>();
         debug_assert!(item_size != 0);
         let max_cap = usize::MAX / item_size;
         if count > max_cap - self.len {
-            return Err(AllocError::UnsupportedSize);
+            return Err(HbAllocError::UnsupportedSize);
         }
         let len_needed = self.len + count;
         if len_needed <= self.cap {
@@ -91,7 +91,7 @@ impl<'a, T> Vector<'a, T> {
         }
     }
 
-    pub fn push(&mut self, v: T) -> Result<(), (AllocError, T)> {
+    pub fn push(&mut self, v: T) -> Result<(), (HbAllocError, T)> {
         if let Err(e) = self.reserve(1) {
             return Err((e, v));
         }
@@ -123,7 +123,7 @@ impl<'a, T> Vector<'a, T> {
         unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), core::cmp::min(self.len, self.cap)) }
     }
 
-    pub fn append_from_slice(&mut self, src: &[T]) -> Result<(), AllocError>
+    pub fn append_from_slice(&mut self, src: &[T]) -> Result<(), HbAllocError>
     where T: Copy {
         self.reserve(src.len())?;
         unsafe {
@@ -140,7 +140,7 @@ impl<'a, T> Vector<'a, T> {
     pub fn append_vector(
         &mut self,
         tail: Vector<'a, T>
-    ) -> Result<(), AllocError> {
+    ) -> Result<(), HbAllocError> {
         self.reserve(tail.len())?;
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -161,7 +161,7 @@ impl<'a, T> Vector<'a, T> {
     pub fn from_slice(
         allocator: AllocatorRef<'a>,
         src: &[T]
-    ) -> Result<Self, AllocError>
+    ) -> Result<Self, HbAllocError>
     where T: Copy {
         let mut v: Self = Vector::new(allocator);
         v.append_from_slice(src)?;
@@ -171,7 +171,7 @@ impl<'a, T> Vector<'a, T> {
     pub fn dup<'b>(
         &self,
         allocator: AllocatorRef<'b>,
-    ) -> Result<Vector<'b, T>, AllocError>
+    ) -> Result<Vector<'b, T>, HbAllocError>
     where T: Copy {
         Vector::from_slice(allocator, self.as_slice())
     }
@@ -235,7 +235,7 @@ mod tests {
         let a = no_sup_allocator();
         let mut v: Vector<'_, u16> = Vector::new(a.to_ref());
         let (e, x) = v.push(0xAA55u16).unwrap_err();
-        assert_eq!(e, AllocError::UnsupportedOperation);
+        assert_eq!(e, HbAllocError::UnsupportedOperation);
         assert_eq!(x, 0xAA55u16);
     }
 
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(v.len(), 2_usize);
 
         let (e, x) = v.push(0x9ABC_u16).unwrap_err();
-        assert_eq!(e, AllocError::NotEnoughMemory);
+        assert_eq!(e, HbAllocError::NotEnoughMemory);
         assert_eq!(x, 0x9ABC_u16);
         assert_eq!(v.len(), 2_usize);
 
@@ -291,7 +291,7 @@ mod tests {
         let ar = a.to_ref();
         let mut v = ar.vector::<u16>();
         v.push(0x1234_u16).unwrap();
-        assert_eq!(v.reserve(usize::MAX).unwrap_err(), AllocError::UnsupportedSize);
+        assert_eq!(v.reserve(usize::MAX).unwrap_err(), HbAllocError::UnsupportedSize);
     }
 
     struct PretendAlloc<'a>(&'a mut [u8]);
@@ -300,7 +300,7 @@ mod tests {
             &self,
             _size: NonZeroUsize,
             _align: Pow2Usize
-        ) -> Result<NonNull<u8>, AllocError> {
+        ) -> Result<NonNull<u8>, HbAllocError> {
             Ok(NonNull::new(self.0.as_ptr() as *mut u8).unwrap())
         }
         unsafe fn free(
@@ -315,7 +315,7 @@ mod tests {
             _current_size: NonZeroUsize,
             _new_larger_size: NonZeroUsize,
             _align: Pow2Usize
-        ) -> Result<NonNull<u8>, AllocError> {
+        ) -> Result<NonNull<u8>, HbAllocError> {
             Ok(ptr)
         }
     }
@@ -351,14 +351,14 @@ mod tests {
         let mut x: [u16; 4] = [ 2, 4, 6, 8 ];
         {
             let v = Vector::map_slice(&x);
-            //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
+            //assert_eq!(v.push(10).unwrap_err(), (HbAllocError::UnsupportedOperation, 10));
             assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 6_u16, 8_u16 ]);
             assert_eq!(v.cap(), 0);
         }
         x[2] = 66;
         {
             let v = Vector::map_slice(&x);
-            //assert_eq!(v.push(10).unwrap_err(), (AllocError::UnsupportedOperation, 10));
+            //assert_eq!(v.push(10).unwrap_err(), (HbAllocError::UnsupportedOperation, 10));
             assert_eq!(v.as_slice(), [ 2_u16, 4_u16, 66_u16, 8_u16 ]);
             assert_eq!(v.cap(), 0);
         }

@@ -247,7 +247,7 @@ fn identify_top_of_file_records<'a, 'x>(
             let ver: u32 = int_be_decode(&tof[4..8]).unwrap();
             let mut id = xc.string();
             write!(id, "qcow{}", ver)
-                .map_err(|_| Error::Alloc(AllocError::NotEnoughMemory))?;
+                .map_err(|_| Error::Alloc(HbAllocError::NotEnoughMemory))?;
             ids.push(DataCell::Identifier(id))?;
         }
     }

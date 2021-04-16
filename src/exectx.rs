@@ -1,7 +1,7 @@
 use crate::mm::AllocatorRef;
 use crate::mm::Box;
 use crate::mm::Rc;
-use crate::mm::AllocError;
+use crate::mm::HbAllocError;
 use crate::mm::Allocator;
 use crate::mm::NOP_ALLOCATOR;
 use crate::mm::String;
@@ -93,7 +93,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn boxed<T: Sized>(
         &self,
         v: T
-    ) -> Result<Box<'a, T>, (AllocError, T)> {
+    ) -> Result<Box<'a, T>, (HbAllocError, T)> {
         self.get_main_allocator().alloc_item(v)
     }
 
@@ -107,7 +107,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn rc<T: Sized>(
         &self,
         v: T
-    ) -> Result<Rc<'a, T>, (AllocError, T)> {
+    ) -> Result<Rc<'a, T>, (HbAllocError, T)> {
         Rc::new(self.get_main_allocator(), v)
     }
 }
@@ -233,7 +233,7 @@ mod tests {
         let mut log = NullStream::new();
         let xc = ExecutionContext::new(a.to_ref(), a.to_ref(), &mut log, LogLevel::Critical);
         let (e, v) = xc.boxed(0x12345_u32).unwrap_err();
-        assert_eq!(e, AllocError::NotEnoughMemory);
+        assert_eq!(e, HbAllocError::NotEnoughMemory);
         assert_eq!(v, 0x12345_u32);
     }
 
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn rc_sad() {
         let xc = ExecutionContext::nop();
-        assert_eq!(xc.rc(1234_u64).unwrap_err(), (AllocError::UnsupportedOperation, 1234_u64));
+        assert_eq!(xc.rc(1234_u64).unwrap_err(), (HbAllocError::UnsupportedOperation, 1234_u64));
     }
 
 }
