@@ -20,6 +20,12 @@ impl From<AllocError> for core::fmt::Error {
     }
 }
 
+impl<T> From<(AllocError, T)> for AllocError {
+    fn from(src: (AllocError, T)) -> Self {
+        src.0
+    }
+}
+
 pub unsafe trait Allocator {
     unsafe fn alloc(
         &self,

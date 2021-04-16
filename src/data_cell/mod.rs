@@ -1,24 +1,41 @@
 use core::fmt;
+use core::fmt::Write as FmtWrite;
 use core::ops::Deref;
 use core::cell::RefCell;
 use core::cell::BorrowError;
 use core::cell::BorrowMutError;
 
 use crate::ExecutionContext;
+use crate::mm::AllocatorRef;
+use crate::mm::AllocError;
 use crate::mm::Rc;
+use crate::mm::Vector;
 use crate::io::IOError;
+use crate::io::IOPartialError;
+use crate::io::ErrorCode;
 use crate::io::stream::Write;
 use crate::num::fmt::MiniNumFmtPack;
 
 pub mod expr;
 pub mod eval;
 
+/* Error ********************************************************************/
 #[derive(Debug, PartialEq)]
 pub enum Error<'e> {
     NotApplicable,
+    Alloc(AllocError),
     IO(IOError<'e>),
     Output(IOError<'e>), // used by report-generating functions like output_as_human_readable
     CellUnavailable, // borrow error on a RefCell while computing something
+}
+
+impl From<fmt::Error> for Error<'_> {
+    fn from (_: fmt::Error) -> Self {
+        Error::Output(
+            IOError::with_str(
+                ErrorCode::Unsuccessful,
+                "error formatting output"))
+    }
 }
 
 impl From<BorrowError> for Error<'_> {
@@ -33,6 +50,25 @@ impl From<BorrowMutError> for Error<'_> {
     }
 }
 
+impl From<AllocError> for Error<'_> {
+    fn from(e: AllocError) -> Self {
+        Error::Alloc(e)
+    }
+}
+
+impl<T> From<(AllocError, T)> for Error<'_> {
+    fn from(e: (AllocError, T)) -> Self {
+        Error::Alloc(e.0)
+    }
+}
+
+impl<'a> From<IOPartialError<'a>> for Error<'a> {
+    fn from(src: IOPartialError<'a>) -> Self {
+        Error::IO(src.to_error())
+    }
+}
+
+/* DataCellOpsMut ***********************************************************/
 pub trait DataCellOpsMut: fmt::Debug {
 
     fn get_property_mut<'x>(
@@ -53,6 +89,7 @@ pub trait DataCellOpsMut: fmt::Debug {
 
 }
 
+/* DataCellOps **************************************************************/
 pub trait DataCellOps: fmt::Debug {
 
     fn get_property<'x>(
@@ -119,6 +156,7 @@ where T: DataCellOps {
 
 }
 
+/* U64Cell ******************************************************************/
 #[derive(Debug)]
 pub struct U64Cell {
     pub n: u64,
@@ -141,10 +179,51 @@ impl DataCellOps for U64Cell {
 
 }
 
+/* ByteVector ***************************************************************/
+#[derive(Debug)]
+pub struct ByteVector<'a>(Vector<'a, u8>);
+
+impl<'a> DataCellOpsMut for ByteVector<'a> {
+
+    fn get_property_mut<'x>(
+        &mut self,
+        _property_name: &str,
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        Err(Error::NotApplicable)
+    }
+
+    fn output_as_human_readable_mut<'w, 'x>(
+        &mut self,
+        out: &mut (dyn Write + 'w),
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        write!(out, "{:?}", self.0.as_slice())?;
+        Ok(())
+    }
+
+}
+
+/* ByteVectorCell ***********************************************************/
+pub type ByteVectorCell<'a> = Rc<'a, RefCell<ByteVector<'a>>>;
+impl<'a> ByteVectorCell<'a> {
+
+    pub fn from_bytes(
+        allocator: AllocatorRef<'a>,
+        data: &[u8]
+    ) -> Result<Self, AllocError> {
+        let bv = ByteVector(Vector::from_slice(allocator, data)?);
+        Ok(Rc::new(allocator, RefCell::new(bv))?)
+    }
+
+}
+
+/* DataCell *****************************************************************/
 #[derive(Debug)]
 pub enum DataCell<'d> {
     Nothing,
     U64(U64Cell),
+    ByteVector(ByteVectorCell<'d>),
     Id(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
 }
@@ -170,6 +249,7 @@ impl<'d> DataCellOps for DataCell<'d> {
         match self {
             DataCell::Nothing => Ok(()),
             DataCell::U64(v) => v.output_as_human_readable(w, xc),
+            DataCell::ByteVector(v) => v.output_as_human_readable(w, xc),
             DataCell::Id(s) => {
                 w.write_all(s.as_bytes(), xc)
                     .map_err(|e| Error::Output(e.to_error()))

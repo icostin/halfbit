@@ -12,22 +12,17 @@ use halfbit::ExecutionContext;
 use halfbit::LogLevel;
 use halfbit::num::fmt as num_fmt;
 use halfbit::mm::Allocator;
-//use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
 use halfbit::mm::Rc;
-//use halfbit::mm::String as HbString;
-//use halfbit::mm::Vector as HbVector;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOPartialError;
 use halfbit::io::IOError;
-//use halfbit::io::IOPartialResult;
-//use halfbit::io::stream::RandomAccessRead;
 use halfbit::io::stream::SeekFrom;
 use halfbit::io::stream::Seek;
 use halfbit::io::stream::Read;
 use halfbit::io::stream::Write;
-//use halfbit::conv::int_be_decode;
+use halfbit::io::stream::RandomAccessRead;
 use halfbit::log_debug;
 use halfbit::log_info;
 use halfbit::log_warn;
@@ -36,6 +31,7 @@ use halfbit::log_crit;
 
 use halfbit::data_cell;
 use halfbit::data_cell::U64Cell;
+use halfbit::data_cell::ByteVectorCell;
 use halfbit::data_cell::DataCell;
 use halfbit::data_cell::DataCellOps;
 use halfbit::data_cell::Error;
@@ -43,17 +39,7 @@ use halfbit::data_cell::expr::Source;
 use halfbit::data_cell::expr::Parser;
 use halfbit::data_cell::expr::Expr;
 use halfbit::data_cell::expr::BasicTokenType;
-//use halfbit::data_cell::expr::ParseError;
 use halfbit::data_cell::eval::Eval;
-
-/*
-use halfbit::data_cell_v0::DataCell;
-use halfbit::data_cell_v0::DataCellOps;
-//use halfbit::data_cell_v0::DataCellOpsExtra;
-use halfbit::data_cell_v0::Error;
-//use halfbit::data_cell_v0::expr::ParseError;
-use halfbit::data_cell_v0::Eval;
-*/
 
 #[derive(Copy, Clone, Debug)]
 struct ExitCode(u8);
@@ -138,6 +124,7 @@ impl<'a> DataCellOps for Item<'a> {
                         fmt_pack: num_fmt::MiniNumFmtPack::default()
                     })),
             "first_byte" => extract_first_byte(&self, xc),
+            "first_8_bytes" => first_8_bytes(&self, xc),
             _ => Err(data_cell::Error::NotApplicable),
         }
     }
@@ -214,16 +201,18 @@ fn extract_first_byte <'a, 'x>(
         })
 }
 
-/*
 fn first_8_bytes<'a, 'x>(
-    item: &mut Item<'a>,
+    item: &Item<'a>,
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, Error<'x>> {
+    let mut f = item.file.borrow_mut();
     let mut buf = [0_u8; 8];
-    let n = item.stream.seek_read(0, &mut buf, xc)?;
-    Ok(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &buf[0..n])?))
+    let n = f.seek_read(0, &mut buf, xc)?;
+    Ok(DataCell::ByteVector(
+            ByteVectorCell::from_bytes(xc.get_main_allocator(), &buf[0..n])?))
 }
 
+/*
 fn identify_top_of_file_records<'a, 'x>(
     item: &mut Item<'a>,
     xc: &mut ExecutionContext<'x>,
