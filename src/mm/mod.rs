@@ -68,25 +68,25 @@ pub unsafe trait HbAllocator {
         panic!("contains not implemented!");
     }
     fn name(&self) -> &'static str { "some-allocator" }
-    fn to_ref(&self) -> AllocatorRef
+    fn to_ref(&self) -> HbAllocatorRef
     where Self: Sized {
-        AllocatorRef { allocator: self as &dyn HbAllocator }
+        HbAllocatorRef { allocator: self as &dyn HbAllocator }
     }
 }
 
 #[derive(Copy, Clone)]
-pub struct AllocatorRef<'a> {
+pub struct HbAllocatorRef<'a> {
     allocator: &'a (dyn HbAllocator + 'a)
 }
 
-impl<'a> core::fmt::Debug for AllocatorRef<'a> {
+impl<'a> core::fmt::Debug for HbAllocatorRef<'a> {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>)
     -> core::result::Result<(), core::fmt::Error> {
         write!(fmt, "{}@{:X}", self.name(), ((self.allocator as *const dyn HbAllocator) as *const u8) as usize)
     }
 }
 
-unsafe impl<'a> HbAllocator for AllocatorRef<'a> {
+unsafe impl<'a> HbAllocator for HbAllocatorRef<'a> {
     unsafe fn alloc(
         &self,
         size: NonZeroUsize,
@@ -131,7 +131,7 @@ unsafe impl<'a> HbAllocator for AllocatorRef<'a> {
     fn name(&self) -> &'static str {
         self.allocator.name()
     }
-    fn to_ref(&self) -> AllocatorRef
+    fn to_ref(&self) -> HbAllocatorRef
     where Self: Sized {
         *self
     }
@@ -167,7 +167,7 @@ pub mod rc;
 pub use rc::Rc as Rc;
 pub use rc::RcWeak as RcWeak;
 
-impl<'a> AllocatorRef<'a> {
+impl<'a> HbAllocatorRef<'a> {
     pub fn alloc_item<T: Sized>(self, v: T) -> Result<Box<'a, T>, (HbAllocError, T)> {
         Box::new(self, v)
     }
@@ -342,10 +342,10 @@ mod tests {
         let a = DefaultAllocator { };
         let ar = a.to_ref();
         let arr = ar.to_ref();
-        let size = core::mem::size_of::<AllocatorRef<'_>>();
+        let size = core::mem::size_of::<HbAllocatorRef<'_>>();
         assert_eq!(
-            unsafe { core::slice::from_raw_parts(&ar as *const AllocatorRef as *const u8, size) },
-            unsafe { core::slice::from_raw_parts(&arr as *const AllocatorRef as *const u8, size) });
+            unsafe { core::slice::from_raw_parts(&ar as *const HbAllocatorRef as *const u8, size) },
+            unsafe { core::slice::from_raw_parts(&arr as *const HbAllocatorRef as *const u8, size) });
     }
 
     struct AllocOrGrowTestAllocator();

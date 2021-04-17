@@ -1,5 +1,5 @@
 use super::Vector;
-use super::AllocatorRef;
+use super::HbAllocatorRef;
 use super::HbAllocError;
 use core::fmt::Debug;
 use core::fmt::Write as FmtWrite;
@@ -15,7 +15,7 @@ pub struct String<'a> {
 
 
 impl<'a> String<'a> {
-    pub fn new(allocator: AllocatorRef<'a>) -> String<'a> {
+    pub fn new(allocator: HbAllocatorRef<'a>) -> String<'a> {
         String {
             data: Vector::new(allocator)
         }
@@ -41,7 +41,7 @@ impl<'a> String<'a> {
     }
     pub fn dup<'b>(
         &self,
-        allocator: AllocatorRef<'b>,
+        allocator: HbAllocatorRef<'b>,
     ) -> Result<String<'b>, HbAllocError> {
         let mut o = String::new(allocator);
         o.append_str(self.as_str())?;

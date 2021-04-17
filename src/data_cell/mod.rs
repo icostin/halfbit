@@ -6,7 +6,7 @@ use core::cell::BorrowError;
 use core::cell::BorrowMutError;
 
 use crate::ExecutionContext;
-use crate::mm::AllocatorRef;
+use crate::mm::HbAllocatorRef;
 use crate::mm::HbAllocError;
 use crate::mm::Rc;
 use crate::mm::Vector;
@@ -219,7 +219,7 @@ pub type ByteVectorCell<'a> = Rc<'a, RefCell<ByteVector<'a>>>;
 impl<'a> ByteVectorCell<'a> {
 
     pub fn from_bytes(
-        allocator: AllocatorRef<'a>,
+        allocator: HbAllocatorRef<'a>,
         data: &[u8]
     ) -> Result<Self, HbAllocError> {
         let bv = ByteVector(Vector::from_slice(allocator, data)?);

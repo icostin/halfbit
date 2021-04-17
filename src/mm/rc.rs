@@ -9,13 +9,13 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use super::HbAllocator;
-use super::AllocatorRef;
+use super::HbAllocatorRef;
 use super::HbAllocError;
 
 struct RcCtlBlock<'a> {
     strong: usize,
     weak: usize,
-    allocator: AllocatorRef<'a>,
+    allocator: HbAllocatorRef<'a>,
 }
 
 type RcData<'a, T> = UnsafeCell<(RcCtlBlock<'a>, T)>;
@@ -51,7 +51,7 @@ impl<'a, T> Rc<'a, T>
 where T: Sized {
 
     pub fn new(
-        allocator: AllocatorRef<'a>,
+        allocator: HbAllocatorRef<'a>,
         value: T,
     ) -> Result<Self, (HbAllocError, T)> {
         let size = core::mem::size_of::<RcData<'a, T>>();

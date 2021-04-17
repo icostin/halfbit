@@ -13,7 +13,7 @@ use super::Seek;
 use super::SeekFrom;
 use super::Truncate;
 
-use crate::mm::AllocatorRef;
+use crate::mm::HbAllocatorRef;
 use crate::mm::String;
 use crate::io::IOResult;
 use crate::io::IOError;
@@ -23,7 +23,7 @@ use crate::ExecutionContext;
 fn convert_error_with_allocator<'a>(
     e: std::io::Error,
     msg_pfx: &'static str,
-    a: AllocatorRef<'a>,
+    a: HbAllocatorRef<'a>,
 ) -> IOError<'a> {
     let ec: ErrorCode = match e.kind() {
         StdIOErrorKind::Interrupted => ErrorCode::Interrupted,

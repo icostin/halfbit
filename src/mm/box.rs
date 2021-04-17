@@ -8,17 +8,17 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use super::HbAllocator;
-use super::AllocatorRef;
+use super::HbAllocatorRef;
 use super::HbAllocError;
 
 pub struct Box<'a, T: ?Sized> {
-    allocator: AllocatorRef<'a>,
+    allocator: HbAllocatorRef<'a>,
     ptr: NonNull<T>,
 }
 
 impl<'a, T: Sized> Box<'a, T> {
     pub fn new(
-        allocator: AllocatorRef<'a>,
+        allocator: HbAllocatorRef<'a>,
         value: T,
     ) -> Result<Self, (HbAllocError, T)> {
         let size = core::mem::size_of::<T>();
@@ -40,13 +40,13 @@ impl<'a, T: Sized> Box<'a, T> {
 }
 
 impl<'a, T: ?Sized> Box<'a, T> {
-    pub unsafe fn to_parts(self) -> (AllocatorRef<'a>, NonNull<T>) {
+    pub unsafe fn to_parts(self) -> (HbAllocatorRef<'a>, NonNull<T>) {
         let x = core::mem::ManuallyDrop::new(self);
         (x.allocator, x.ptr)
     }
 
     pub unsafe fn from_parts(
-        allocator: AllocatorRef<'a>,
+        allocator: HbAllocatorRef<'a>,
         ptr: NonNull<T>
     ) -> Box<'a, T> {
         Box { allocator, ptr }

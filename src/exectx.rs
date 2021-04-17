@@ -1,4 +1,4 @@
-use crate::mm::AllocatorRef;
+use crate::mm::HbAllocatorRef;
 use crate::mm::Box;
 use crate::mm::Rc;
 use crate::mm::HbAllocError;
@@ -20,8 +20,8 @@ pub enum LogLevel {
 
 /* ExecutionContext *********************************************************/
 pub struct ExecutionContext<'a> {
-    main_allocator: AllocatorRef<'a>,
-    error_allocator: AllocatorRef<'a>,
+    main_allocator: HbAllocatorRef<'a>,
+    error_allocator: HbAllocatorRef<'a>,
     log_stream: &'a mut (dyn Write + 'a),
     log_level: LogLevel,
     logging_error_mask: u8,
@@ -31,8 +31,8 @@ pub struct ExecutionContext<'a> {
 impl<'a> ExecutionContext<'a> {
 
     pub fn new(
-        main_allocator: AllocatorRef<'a>,
-        error_allocator: AllocatorRef<'a>,
+        main_allocator: HbAllocatorRef<'a>,
+        error_allocator: HbAllocatorRef<'a>,
         log_stream: &'a mut (dyn Write + 'a),
         log_level: LogLevel,
     ) -> ExecutionContext<'a> {
@@ -62,11 +62,11 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
-    pub fn get_main_allocator(&self) -> AllocatorRef<'a> {
+    pub fn get_main_allocator(&self) -> HbAllocatorRef<'a> {
         self.main_allocator
     }
 
-    pub fn get_error_allocator(&self) -> AllocatorRef<'a> {
+    pub fn get_error_allocator(&self) -> HbAllocatorRef<'a> {
         self.error_allocator
     }
 

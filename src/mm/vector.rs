@@ -6,7 +6,7 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use super::HbAllocator;
-use super::AllocatorRef;
+use super::HbAllocatorRef;
 use super::HbAllocError;
 
 #[derive(Debug)]
@@ -14,14 +14,14 @@ pub struct Vector<'a, T> {
     ptr: NonNull<T>,
     len: usize,
     cap: usize,
-    allocator: AllocatorRef<'a>,
+    allocator: HbAllocatorRef<'a>,
 }
 
 use super::nop_alloc::NOP_ALLOCATOR;
 
 impl<'a, T> Vector<'a, T> {
 
-    pub fn new(allocator: AllocatorRef<'a>) -> Vector<'a, T> {
+    pub fn new(allocator: HbAllocatorRef<'a>) -> Vector<'a, T> {
         let item_size = core::mem::size_of::<T>();
         if item_size == 0 {
             panic!("zero sized types!");
@@ -159,7 +159,7 @@ impl<'a, T> Vector<'a, T> {
     }
 
     pub fn from_slice(
-        allocator: AllocatorRef<'a>,
+        allocator: HbAllocatorRef<'a>,
         src: &[T]
     ) -> Result<Self, HbAllocError>
     where T: Copy {
@@ -170,7 +170,7 @@ impl<'a, T> Vector<'a, T> {
 
     pub fn dup<'b>(
         &self,
-        allocator: AllocatorRef<'b>,
+        allocator: HbAllocatorRef<'b>,
     ) -> Result<Vector<'b, T>, HbAllocError>
     where T: Copy {
         Vector::from_slice(allocator, self.as_slice())
