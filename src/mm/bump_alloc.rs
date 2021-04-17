@@ -6,7 +6,7 @@ use crate::num::Pow2Usize;
 use crate::num::usize_align_up;
 
 use super::NonNull;
-use super::Allocator;
+use super::HbAllocator;
 use super::HbAllocError;
 
 struct BumpAllocatorState<'a> {
@@ -51,7 +51,7 @@ impl<'a> BumpAllocator<'a> {
     }
 }
 
-unsafe impl<'a> Allocator for BumpAllocator<'a> {
+unsafe impl<'a> HbAllocator for BumpAllocator<'a> {
     unsafe fn alloc(
         &self,
         size: NonZeroUsize,

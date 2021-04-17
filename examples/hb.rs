@@ -11,7 +11,7 @@ use std::fmt::Write as FmtWrite;
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
 use halfbit::num::fmt as num_fmt;
-use halfbit::mm::Allocator;
+use halfbit::mm::HbAllocator;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
 use halfbit::mm::Rc;

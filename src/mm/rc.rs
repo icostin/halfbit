@@ -8,7 +8,7 @@ use core::fmt;
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
-use super::Allocator;
+use super::HbAllocator;
 use super::AllocatorRef;
 use super::HbAllocError;
 

@@ -4,7 +4,7 @@ use core::cell::UnsafeCell;
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
-use super::Allocator;
+use super::HbAllocator;
 use super::HbAllocError;
 
 pub struct SingleAllocState<'a> {
@@ -52,7 +52,7 @@ impl<'a> SingleAlloc<'a> {
     }
 }
 
-unsafe impl<'a> Allocator for SingleAlloc<'a> {
+unsafe impl<'a> HbAllocator for SingleAlloc<'a> {
     unsafe fn alloc(
         &self,
         size: NonZeroUsize,

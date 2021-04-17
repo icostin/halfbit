@@ -5,7 +5,7 @@ use core::fmt::Formatter;
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
-use super::Allocator;
+use super::HbAllocator;
 use super::AllocatorRef;
 use super::HbAllocError;
 
@@ -295,7 +295,7 @@ mod tests {
     }
 
     struct PretendAlloc<'a>(&'a mut [u8]);
-    unsafe impl Allocator for PretendAlloc<'_> {
+    unsafe impl HbAllocator for PretendAlloc<'_> {
         unsafe fn alloc(
             &self,
             _size: NonZeroUsize,

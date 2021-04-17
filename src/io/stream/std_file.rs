@@ -104,7 +104,7 @@ mod tests {
     use std::fs::OpenOptions;
     use crate::io::stream::NULL_STREAM;
     use crate::io::stream::Stream;
-    use crate::mm::Allocator;
+    use crate::mm::HbAllocator;
     use crate::mm::BumpAllocator;
     use crate::LogLevel;
 

@@ -1,6 +1,6 @@
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
-use super::Allocator;
+use super::HbAllocator;
 use super::HbAllocError;
 use super::NonNull;
 
@@ -15,7 +15,7 @@ impl Malloc {
     }
 }
 
-unsafe impl Allocator for Malloc {
+unsafe impl HbAllocator for Malloc {
     unsafe fn alloc(
         &self,
         size: NonZeroUsize,

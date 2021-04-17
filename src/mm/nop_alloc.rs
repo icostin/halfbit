@@ -2,13 +2,13 @@ use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 use super::NonNull;
 use super::HbAllocError;
-use super::Allocator;
+use super::HbAllocator;
 
 pub struct NopAllocator { }
 
 pub const NOP_ALLOCATOR: NopAllocator = NopAllocator { };
 
-unsafe impl Allocator for NopAllocator {
+unsafe impl HbAllocator for NopAllocator {
     unsafe fn alloc(
         &self,
         _size: NonZeroUsize,

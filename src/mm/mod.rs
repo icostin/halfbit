@@ -26,7 +26,7 @@ impl<T> From<(HbAllocError, T)> for HbAllocError {
     }
 }
 
-pub unsafe trait Allocator {
+pub unsafe trait HbAllocator {
     unsafe fn alloc(
         &self,
         _size: NonZeroUsize,
@@ -70,23 +70,23 @@ pub unsafe trait Allocator {
     fn name(&self) -> &'static str { "some-allocator" }
     fn to_ref(&self) -> AllocatorRef
     where Self: Sized {
-        AllocatorRef { allocator: self as &dyn Allocator }
+        AllocatorRef { allocator: self as &dyn HbAllocator }
     }
 }
 
 #[derive(Copy, Clone)]
 pub struct AllocatorRef<'a> {
-    allocator: &'a (dyn Allocator + 'a)
+    allocator: &'a (dyn HbAllocator + 'a)
 }
 
 impl<'a> core::fmt::Debug for AllocatorRef<'a> {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>)
     -> core::result::Result<(), core::fmt::Error> {
-        write!(fmt, "{}@{:X}", self.name(), ((self.allocator as *const dyn Allocator) as *const u8) as usize)
+        write!(fmt, "{}@{:X}", self.name(), ((self.allocator as *const dyn HbAllocator) as *const u8) as usize)
     }
 }
 
-unsafe impl<'a> Allocator for AllocatorRef<'a> {
+unsafe impl<'a> HbAllocator for AllocatorRef<'a> {
     unsafe fn alloc(
         &self,
         size: NonZeroUsize,
@@ -196,7 +196,7 @@ mod tests {
     use super::*;
 
     struct DefaultAllocator { }
-    unsafe impl Allocator for DefaultAllocator { }
+    unsafe impl HbAllocator for DefaultAllocator { }
 
     #[test]
     #[should_panic(expected = "alloc not implemented")]
@@ -295,7 +295,7 @@ mod tests {
     }
 
     struct ShrinkTestAllocator { }
-    unsafe impl Allocator for ShrinkTestAllocator {
+    unsafe impl HbAllocator for ShrinkTestAllocator {
         unsafe fn shrink(
             &self,
             _ptr: NonNull<u8>,
@@ -322,7 +322,7 @@ mod tests {
     }
 
     struct ContainsSupTestAllocator { }
-    unsafe impl Allocator for ContainsSupTestAllocator {
+    unsafe impl HbAllocator for ContainsSupTestAllocator {
         fn supports_contains(&self) -> bool { true }
         fn contains(&self, ptr: NonNull<u8>) -> bool {
             (ptr.as_ptr() as usize) & 1 == 1
@@ -349,7 +349,7 @@ mod tests {
     }
 
     struct AllocOrGrowTestAllocator();
-    unsafe impl Allocator for AllocOrGrowTestAllocator {
+    unsafe impl HbAllocator for AllocOrGrowTestAllocator {
         unsafe fn alloc(
             &self,
             size: NonZeroUsize,

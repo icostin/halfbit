@@ -3,12 +3,12 @@ use core::ptr::NonNull;
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
-use super::Allocator;
+use super::HbAllocator;
 use super::HbAllocError;
 
 pub struct NoSupAllocator { }
 
-unsafe impl Allocator for NoSupAllocator {
+unsafe impl HbAllocator for NoSupAllocator {
     unsafe fn alloc(
         &self,
         _size: NonZeroUsize,

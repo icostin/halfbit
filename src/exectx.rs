@@ -2,7 +2,7 @@ use crate::mm::AllocatorRef;
 use crate::mm::Box;
 use crate::mm::Rc;
 use crate::mm::HbAllocError;
-use crate::mm::Allocator;
+use crate::mm::HbAllocator;
 use crate::mm::NOP_ALLOCATOR;
 use crate::mm::String;
 use crate::mm::Vector;
@@ -201,7 +201,7 @@ macro_rules! log_debug {
 mod tests {
     use super::*;
     use crate::mm::BumpAllocator;
-    use crate::mm::Allocator;
+    use crate::mm::HbAllocator;
     use crate::io::NullStream;
 
     #[test]

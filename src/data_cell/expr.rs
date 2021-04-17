@@ -688,7 +688,7 @@ impl<'s, 't> Parser<'s, 't> {
 #[cfg(test)]
 mod tests {
     use crate::mm::SingleAlloc;
-    use crate::mm::Allocator;
+    use crate::mm::HbAllocator;
     use core::fmt::Write;
 
     use super::*;
@@ -718,7 +718,7 @@ mod tests {
         assert_eq!(BasicTokenType::Comma.name(), "comma");
 
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 2048];
@@ -732,7 +732,7 @@ mod tests {
     fn empty_basic_token_type_bitmap_display() {
         use core::fmt::Write;
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 2048];
@@ -747,7 +747,7 @@ mod tests {
     fn basic_token_type_bitmap_display() {
         use core::fmt::Write;
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 2048];
@@ -886,7 +886,7 @@ mod tests {
     #[test]
     fn identifier_token() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
@@ -955,7 +955,7 @@ mod tests {
     #[test]
     fn next_token_encounters_bad_char_with_error_msg() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
@@ -994,7 +994,7 @@ mod tests {
     #[test]
     fn id_as_primary_expr() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
@@ -1011,7 +1011,7 @@ mod tests {
     #[test]
     fn dot_as_primary_expr() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
@@ -1027,7 +1027,7 @@ mod tests {
     #[test]
     fn id_dot_chain_postfix_expr() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 256];
@@ -1043,7 +1043,7 @@ mod tests {
     #[test]
     fn postfix_dot_dot() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 2048];
@@ -1060,7 +1060,7 @@ mod tests {
     #[test]
     fn expr_list_2_items() {
         use crate::mm::BumpAllocator;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use crate::io::stream::NULL_STREAM;
         use crate::exectx::LogLevel;
         let mut buffer = [0; 2048];
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn display_basic_token_data() {
         use crate::mm::SingleAlloc;
-        use crate::mm::Allocator;
+        use crate::mm::HbAllocator;
         use core::fmt::Write;
         let mut buffer = [0; 2048];
         let a = SingleAlloc::new(&mut buffer);
