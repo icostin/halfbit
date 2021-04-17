@@ -4,6 +4,7 @@ use core::ops::Deref;
 use core::cell::RefCell;
 use core::cell::BorrowError;
 use core::cell::BorrowMutError;
+use core::convert::TryInto;
 
 use crate::ExecutionContext;
 use crate::mm::AllocatorRef;
@@ -163,6 +164,14 @@ pub struct U64Cell {
     pub fmt_pack: MiniNumFmtPack,
 }
 
+impl U64Cell {
+
+    pub fn new(n: u64) -> Self {
+        let fmt_pack = MiniNumFmtPack::default();
+        U64Cell { n, fmt_pack }
+    }
+}
+
 impl DataCellOps for U64Cell {
 
     fn output_as_human_readable<'w, 'x>(
@@ -187,10 +196,16 @@ impl<'a> DataCellOpsMut for ByteVector<'a> {
 
     fn get_property_mut<'x>(
         &mut self,
-        _property_name: &str,
+        property_name: &str,
         _xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, Error<'x>> {
-        Err(Error::NotApplicable)
+        match property_name {
+            "len" | "length" | "count" | "size" => {
+                let v = self.0.len().try_into().unwrap();
+                Ok(DataCell::U64(U64Cell::new(v)))
+            },
+            _ => Err(Error::NotApplicable)
+        }
     }
 
     fn output_as_human_readable_mut<'w, 'x>(
@@ -228,6 +243,28 @@ impl<'a> ByteVectorCell<'a> {
 
 }
 
+/* DCOVector ****************************************************************/
+#[derive(Debug)]
+pub struct DCOVector<'a, T: DataCellOps>(Vector<'a, T>);
+
+impl<'a, T: DataCellOps> DataCellOpsMut for DCOVector<'a, T> {
+
+    fn get_property_mut<'x>(
+        &mut self,
+        property_name: &str,
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        match property_name {
+            "len" | "length" | "count" => {
+                let v = self.0.len().try_into().unwrap();
+                Ok(DataCell::U64(U64Cell::new(v)))
+            },
+            _ => Err(Error::NotApplicable)
+        }
+    }
+
+}
+
 /* DataCell *****************************************************************/
 #[derive(Debug)]
 pub enum DataCell<'d> {
@@ -236,6 +273,7 @@ pub enum DataCell<'d> {
     ByteVector(ByteVectorCell<'d>),
     StaticId(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
+    Vector(Rc<'d, RefCell<DCOVector<'d, DataCell<'d>>>>),
 }
 
 impl<'d> DataCellOps for DataCell<'d> {
@@ -246,6 +284,9 @@ impl<'d> DataCellOps for DataCell<'d> {
         xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, Error<'x>> {
         match self {
+            DataCell::U64(v) => v.get_property(property_name, xc),
+            DataCell::ByteVector(v) => v.get_property(property_name, xc),
+            DataCell::Vector(v) => v.get_property(property_name, xc),
             DataCell::Dyn(o) => o.get_property(property_name, xc),
             _ => Err(Error::NotApplicable)
         }
@@ -265,6 +306,7 @@ impl<'d> DataCellOps for DataCell<'d> {
                     .map_err(|e| Error::Output(e.to_error()))
             },
             DataCell::Dyn(v) => v.deref().output_as_human_readable(w, xc),
+            DataCell::Vector(v) => v.deref().output_as_human_readable(w, xc),
         }
     }
 

@@ -436,7 +436,7 @@ fn process_item<'x>(
             .or_else(|e| match e {
                 Error::NotApplicable => {
                     status.attributes_not_applicable += 1;
-                    log_warn!(xc, "warning:{:?}:{:?}:{:?}", item_name, expr, e);
+                    log_warn!(xc, "warning:{:?}:{}:{:?}", item_name, expr, e);
                     Ok(())
                 },
                 Error::Output(oe) => {
