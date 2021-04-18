@@ -11,9 +11,12 @@ use std::fmt::Write as FmtWrite;
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
 use halfbit::num::fmt as num_fmt;
+use halfbit::conv::int_be_decode;
 use halfbit::mm::Allocator;
+//use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
+//use halfbit::mm::String;
 use halfbit::mm::Rc;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOPartialError;
@@ -34,6 +37,7 @@ use halfbit::data_cell::U64Cell;
 use halfbit::data_cell::ByteVectorCell;
 use halfbit::data_cell::DataCell;
 use halfbit::data_cell::DataCellOps;
+use halfbit::data_cell::DCOVector;
 use halfbit::data_cell::Error;
 use halfbit::data_cell::expr::Source;
 use halfbit::data_cell::expr::Parser;
@@ -118,13 +122,10 @@ impl<'a> DataCellOps for Item<'a> {
         xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
         match property_name {
-            "fourty_two" => Ok(DataCell::U64(
-                    U64Cell{
-                        n: 42,
-                        fmt_pack: num_fmt::MiniNumFmtPack::default()
-                    })),
+            "fourty_two" => Ok(DataCell::U64(U64Cell::new(42))),
             "first_byte" => extract_first_byte(&self, xc),
             "first_8_bytes" => first_8_bytes(&self, xc),
+            "tof_ids" => identify_top_of_file_records(&self, xc),
             _ => Err(data_cell::Error::NotApplicable),
         }
     }
@@ -212,48 +213,51 @@ fn first_8_bytes<'a, 'x>(
             ByteVectorCell::from_bytes(xc.get_main_allocator(), &buf[0..n])?))
 }
 
-/*
 fn identify_top_of_file_records<'a, 'x>(
-    item: &mut Item<'a>,
+    item: &Item<'a>,
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, Error<'x>> {
+    let mut f = item.file.borrow_mut();
     let mut ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
     let mut tof_buffer = [0_u8; 0x40];
-    let tof_len = item.stream.seek_read(0, &mut tof_buffer, xc)?;
+    let tof_len = f.seek_read(0, &mut tof_buffer, xc)?;
     let tof = &tof_buffer[0..tof_len];
     if tof.starts_with(b"PK") {
-        ids.push(DataCell::Identifier(HbString::map_str("zip_record")))?;
+        ids.push(DataCell::StaticId("zip_record"))?;
     } else if tof.starts_with(b"#!") {
-        ids.push(DataCell::Identifier(HbString::map_str("shebang")))?;
+        ids.push(DataCell::StaticId("shebang"))?;
     } else if tof.starts_with(b"\x7FELF") {
-        ids.push(DataCell::Identifier(HbString::map_str("elf")))?;
+        ids.push(DataCell::StaticId("elf"))?;
     } else if tof.starts_with(b"MZ") {
-        ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
+        ids.push(DataCell::StaticId("dos_exe"))?;
     } else if tof.starts_with(b"ZM") {
-        ids.push(DataCell::Identifier(HbString::map_str("dos_exe")))?;
+        ids.push(DataCell::StaticId("dos_exe"))?;
     } else if tof.starts_with(b"\x1F\x8B") {
-        ids.push(DataCell::Identifier(HbString::map_str("gzip")))?;
+        ids.push(DataCell::StaticId("gzip"))?;
     } else if tof.starts_with(b"BZ") {
-        ids.push(DataCell::Identifier(HbString::map_str("bzip2")))?;
+        ids.push(DataCell::StaticId("bzip2"))?;
     } else if tof.starts_with(b"\xFD7zXZ\x00") {
-        ids.push(DataCell::Identifier(HbString::map_str("xz")))?;
+        ids.push(DataCell::StaticId("xz"))?;
     } else if tof.starts_with(b"!<arch>\n") {
-        ids.push(DataCell::Identifier(HbString::map_str("ar")))?;
+        ids.push(DataCell::StaticId("ar"))?;
     } else if tof.starts_with(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1") {
-        ids.push(DataCell::Identifier(HbString::map_str("ms_cfb")))?;
+        ids.push(DataCell::StaticId("ms_cfb"))?;
     } else if tof.starts_with(b"QFI\xFB") {
-        ids.push(DataCell::Identifier(HbString::map_str("qcow")))?;
+        ids.push(DataCell::StaticId("qcow"))?;
         if tof_len >= 8 {
             let ver: u32 = int_be_decode(&tof[4..8]).unwrap();
-            let mut id = xc.string();
-            write!(id, "qcow{}", ver)
-                .map_err(|_| Error::Alloc(AllocError::NotEnoughMemory))?;
-            ids.push(DataCell::Identifier(id))?;
+            match ver {
+                1 => ids.push(DataCell::StaticId("qcow1"))?,
+                2 => ids.push(DataCell::StaticId("qcow2"))?,
+                3 => ids.push(DataCell::StaticId("qcow3"))?,
+                _ => {}
+            }
         }
     }
-    Ok(DataCell::CellVector(ids))
+    Ok(DataCell::CellVector(xc.rc(RefCell::new(DCOVector(ids)))?))
 }
 
+/*
 pub const ELFCLASSNONE: u8 = 0;
 pub const ELFCLASS32: u8 = 1;
 pub const ELFCLASS64: u8 = 2;
@@ -278,39 +282,39 @@ fn elf_header<'a, 'x>(
     eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &magic)?))?;
     let ei_class = item.stream.read_u8(xc)?;
     eh.push(match ei_class {
-        0 => DataCell::Identifier(HbString::map_str("ELFCLASSNONE")),
-        1 => DataCell::Identifier(HbString::map_str("ELFCLASS32")),
-        2 => DataCell::Identifier(HbString::map_str("ELFCLASS64")),
+        0 => DataCell::Identifier(String::map_str("ELFCLASSNONE")),
+        1 => DataCell::Identifier(String::map_str("ELFCLASS32")),
+        2 => DataCell::Identifier(String::map_str("ELFCLASS64")),
         _ => DataCell::U64(ei_class.into()),
     })?;
     let ei_data = item.stream.read_u8(xc)?;
     eh.push(match ei_data {
-        0 => DataCell::Identifier(HbString::map_str("ELFDATANONE")),
-        1 => DataCell::Identifier(HbString::map_str("ELFDATA2LSB")),
-        2 => DataCell::Identifier(HbString::map_str("ELFDATA2MSB")),
+        0 => DataCell::Identifier(String::map_str("ELFDATANONE")),
+        1 => DataCell::Identifier(String::map_str("ELFDATA2LSB")),
+        2 => DataCell::Identifier(String::map_str("ELFDATA2MSB")),
         _ => DataCell::U64(ei_data.into()),
     })?;
     let ei_version = item.stream.read_u8(xc)?;
     eh.push(match ei_version {
-        0 => DataCell::Identifier(HbString::map_str("EV_NONE")),
-        1 => DataCell::Identifier(HbString::map_str("EV_CURRENT")),
+        0 => DataCell::Identifier(String::map_str("EV_NONE")),
+        1 => DataCell::Identifier(String::map_str("EV_CURRENT")),
         _ => DataCell::U64(ei_version.into()),
     })?;
     let ei_osabi = item.stream.read_u8(xc)?;
     eh.push(match ei_osabi {
-        0 => DataCell::Identifier(HbString::map_str("ELFOSABI_NONE")),
-        1 => DataCell::Identifier(HbString::map_str("ELFOSABI_HPUX")),
-        2 => DataCell::Identifier(HbString::map_str("ELFOSABI_NETBSD")),
-        3 => DataCell::Identifier(HbString::map_str("ELFOSABI_LINUX")),
-        6 => DataCell::Identifier(HbString::map_str("ELFOSABI_SOLARIS")),
-        7 => DataCell::Identifier(HbString::map_str("ELFOSABI_AIX")),
-        8 => DataCell::Identifier(HbString::map_str("ELFOSABI_IRIX")),
-        9 => DataCell::Identifier(HbString::map_str("ELFOSABI_FREEBSD")),
-        10 => DataCell::Identifier(HbString::map_str("ELFOSABI_TRU64")),
-        11 => DataCell::Identifier(HbString::map_str("ELFOSABI_MODESTO")),
-        12 => DataCell::Identifier(HbString::map_str("ELFOSABI_OPENBSD")),
-        13 => DataCell::Identifier(HbString::map_str("ELFOSABI_OPENVMS")),
-        14 => DataCell::Identifier(HbString::map_str("ELFOSABI_NSK")),
+        0 => DataCell::Identifier(String::map_str("ELFOSABI_NONE")),
+        1 => DataCell::Identifier(String::map_str("ELFOSABI_HPUX")),
+        2 => DataCell::Identifier(String::map_str("ELFOSABI_NETBSD")),
+        3 => DataCell::Identifier(String::map_str("ELFOSABI_LINUX")),
+        6 => DataCell::Identifier(String::map_str("ELFOSABI_SOLARIS")),
+        7 => DataCell::Identifier(String::map_str("ELFOSABI_AIX")),
+        8 => DataCell::Identifier(String::map_str("ELFOSABI_IRIX")),
+        9 => DataCell::Identifier(String::map_str("ELFOSABI_FREEBSD")),
+        10 => DataCell::Identifier(String::map_str("ELFOSABI_TRU64")),
+        11 => DataCell::Identifier(String::map_str("ELFOSABI_MODESTO")),
+        12 => DataCell::Identifier(String::map_str("ELFOSABI_OPENBSD")),
+        13 => DataCell::Identifier(String::map_str("ELFOSABI_OPENVMS")),
+        14 => DataCell::Identifier(String::map_str("ELFOSABI_NSK")),
         _ => DataCell::U64(ei_osabi.into()),
     })?;
     eh.push(DataCell::U64(item.stream.read_u8(xc)?.into()))?;

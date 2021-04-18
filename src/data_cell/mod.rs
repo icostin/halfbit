@@ -245,7 +245,7 @@ impl<'a> ByteVectorCell<'a> {
 
 /* DCOVector ****************************************************************/
 #[derive(Debug)]
-pub struct DCOVector<'a, T: DataCellOps>(Vector<'a, T>);
+pub struct DCOVector<'a, T: DataCellOps>(pub Vector<'a, T>);
 
 impl<'a, T: DataCellOps> DataCellOpsMut for DCOVector<'a, T> {
 
@@ -263,6 +263,19 @@ impl<'a, T: DataCellOps> DataCellOpsMut for DCOVector<'a, T> {
         }
     }
 
+    fn output_as_human_readable_mut<'w, 'x>(
+        &mut self,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        write!(out, "[")?;
+        for cell in self.0.as_slice() {
+            cell.output_as_human_readable(out, xc)?;
+        }
+        write!(out, "]")?;
+        Ok(())
+    }
+
 }
 
 /* DataCell *****************************************************************/
@@ -273,7 +286,7 @@ pub enum DataCell<'d> {
     ByteVector(ByteVectorCell<'d>),
     StaticId(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
-    Vector(Rc<'d, RefCell<DCOVector<'d, DataCell<'d>>>>),
+    CellVector(Rc<'d, RefCell<DCOVector<'d, DataCell<'d>>>>),
 }
 
 impl<'d> DataCellOps for DataCell<'d> {
@@ -286,7 +299,7 @@ impl<'d> DataCellOps for DataCell<'d> {
         match self {
             DataCell::U64(v) => v.get_property(property_name, xc),
             DataCell::ByteVector(v) => v.get_property(property_name, xc),
-            DataCell::Vector(v) => v.get_property(property_name, xc),
+            DataCell::CellVector(v) => v.get_property(property_name, xc),
             DataCell::Dyn(o) => o.get_property(property_name, xc),
             _ => Err(Error::NotApplicable)
         }
@@ -306,7 +319,7 @@ impl<'d> DataCellOps for DataCell<'d> {
                     .map_err(|e| Error::Output(e.to_error()))
             },
             DataCell::Dyn(v) => v.deref().output_as_human_readable(w, xc),
-            DataCell::Vector(v) => v.deref().output_as_human_readable(w, xc),
+            DataCell::CellVector(v) => v.deref().output_as_human_readable(w, xc),
         }
     }
 
