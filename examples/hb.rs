@@ -45,6 +45,8 @@ use halfbit::data_cell::expr::Expr;
 use halfbit::data_cell::expr::BasicTokenType;
 use halfbit::data_cell::eval::Eval;
 
+const HB_VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 #[derive(Copy, Clone, Debug)]
 struct ExitCode(u8);
 
@@ -134,7 +136,7 @@ impl<'a> DataCellOps for Item<'a> {
 /* process_args *************************************************************/
 fn process_args(args: Vec<StdString>) -> Invocation {
     let m = clap::App::new("halfbit")
-        .version("0.0")
+        .version(HB_VERSION)
         .author("by Costin Ionescu <costin.ionescu@gmail.com>")
         .about("examines given items and generates a report")
         .arg(clap::Arg::with_name("verbose")
