@@ -1,4 +1,4 @@
-.PHONY: quick-test dev-build release clean cov install
+.PHONY: quick-test dev-build release clean cov install inc-ver
 
 quick-test: dev-build
 	./target/debug/examples/hb -e fourty_two makefile
@@ -18,3 +18,7 @@ cov:
 
 install:
 	cargo install --path . --examples --features=use-libc,use-std
+
+inc-ver:
+	sed -i -E 's/version = .([0-9]+.[0-9]+.)([0-9]+).*/echo "version = \\\"\1$$((\2 + 1))\\\""/e' Cargo.toml
+
