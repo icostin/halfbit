@@ -1,6 +1,6 @@
 #![no_std]
-#![feature(unsize)]
-#![feature(unsized_tuple_coercion)]
+#![cfg_attr(feature = "nightly", feature(unsize))]
+#![cfg_attr(feature = "nightly", feature(unsized_tuple_coercion))]
 
 extern crate num_derive;
 

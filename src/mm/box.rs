@@ -1,8 +1,10 @@
 use core::ptr::NonNull;
 use core::ops::Deref;
 use core::ops::DerefMut;
-use core::marker::Unsize;
 use core::fmt;
+
+#[cfg(nightly)]
+use core::marker::Unsize;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -52,6 +54,7 @@ impl<'a, T: ?Sized> Box<'a, T> {
         Box { allocator, ptr }
     }
 
+    #[cfg(nightly)]
     pub fn to_dyn<U>(self) -> Box<'a, U>
     where
         T: Unsize<U>,
@@ -189,6 +192,7 @@ mod tests {
         }
     }
 
+    #[cfg(nightly)]
     #[test]
     fn dyn_box_ab() {
         use crate::mm::bump_alloc::BumpAllocator;
@@ -221,6 +225,7 @@ mod tests {
         assert_eq!(ba.space_left(), 256);
     }
 
+    #[cfg(nightly)]
     #[test]
     fn to_dyn() {
         let mut buffer = [0u8; 16];

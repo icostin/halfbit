@@ -2,8 +2,10 @@ use core::cell::UnsafeCell;
 use core::ops::Deref;
 use core::ptr::NonNull;
 use core::borrow::Borrow;
-use core::marker::Unsize;
 use core::fmt;
+
+#[cfg(feature = "nightly")]
+use core::marker::Unsize;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -108,6 +110,7 @@ where T: ?Sized {
             == b.data as *const RcData<'b, T> as *const u8
     }
 
+    #[cfg(feature = "nightly")]
     pub fn to_dyn<'a, U>(rc: Rc<'a, T>) -> Rc<'a, U>
     where
         T: Unsize<U>,
@@ -347,6 +350,7 @@ mod tests {
         assert!(!a.is_in_use());
     }
 
+    #[cfg(nightly)]
     #[test]
     fn dyn_drop() {
         let mut buffer = [0u8; 64];
