@@ -3,16 +3,21 @@ use core::ops::Deref;
 use core::ptr::NonNull;
 use core::borrow::Borrow;
 use core::fmt;
+use core::ptr;
+use core::mem;
+use core::cmp::max;
+use core::num::NonZeroUsize;
 
 #[cfg(feature = "nightly")]
 use core::marker::Unsize;
 
-use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use super::Allocator;
 use super::AllocatorRef;
 use super::AllocError;
+
+pub struct RcPayload<T: ?Sized>(UnsafeCell<T>);
 
 struct RcCtlBlock<'a> {
     strong: usize,
@@ -20,33 +25,48 @@ struct RcCtlBlock<'a> {
     allocator: AllocatorRef<'a>,
 }
 
-type RcData<'a, T> = UnsafeCell<(RcCtlBlock<'a>, T)>;
-
 pub struct Rc<'a, T>
 where T: ?Sized {
-    data: &'a RcData<'a, T>,
+    data: &'a RcPayload<T>,
 }
 
 pub struct RcWeak<'a, T>
 where T: ?Sized {
-    data: &'a RcData<'a, T>,
+    data: &'a RcPayload<T>,
 }
 
-unsafe fn free_if_unreferenced<'a, T: ?Sized>(rc_block: &mut (RcCtlBlock<'a>, T)) {
+fn rc_alignment(payload_align: usize) -> Pow2Usize {
+    Pow2Usize::new(max(mem::align_of::<RcCtlBlock<'_>>(), payload_align)).unwrap()
+}
+fn rc_align_of<T: Sized>() -> Pow2Usize {
+    rc_alignment(mem::align_of::<RcPayload<T>>())
+}
 
-    if rc_block.0.strong != 0 || rc_block.0.weak != 0 { return; }
+fn rc_align_of_val<T: ?Sized>(payload: &RcPayload<T>) -> Pow2Usize {
+    rc_alignment(mem::align_of_val(payload))
+}
 
-    let size = core::mem::size_of_val(rc_block);
-    let size = NonZeroUsize::new(size).unwrap();
+fn rc_ctl_alloc_size(align: Pow2Usize) -> usize {
+    align.align_up(mem::size_of::<RcCtlBlock<'_>>()).unwrap()
+}
 
-    let align = core::mem::align_of_val(rc_block);
-    let align = Pow2Usize::new(align).unwrap();
+unsafe fn rc_ctl_block<'a, T:?Sized>(payload: &'a RcPayload<T>) -> &mut RcCtlBlock<'a> {
+    let uptr = payload as *const RcPayload<T> as *const u8 as usize;
+    let uptr = uptr - mem::size_of::<RcCtlBlock<'_>>();
+    &mut *(uptr as *mut RcCtlBlock<'a>)
+}
 
-    let allocator = rc_block.0.allocator;
-    allocator.free(
-        NonNull::new(rc_block as *mut (RcCtlBlock<'a>, T) as *mut u8).unwrap(),
-        size,
-        align);
+unsafe fn free_if_unreferenced<T: ?Sized>(payload: &RcPayload<T>) {
+
+    let ctl = rc_ctl_block(payload);
+    if ctl.strong == 0 && ctl.weak == 0 {
+        let align = rc_align_of_val(payload);
+        let payload_ptr = payload.0.get();
+        let ctl_alloc_size = rc_ctl_alloc_size(align);
+        let uptr = payload_ptr as *const u8 as usize - ctl_alloc_size;
+        let size = NonZeroUsize::new(mem::size_of_val(payload) + ctl_alloc_size).unwrap();
+        ctl.allocator.free(NonNull::new(uptr as *mut u8).unwrap(), size, align);
+    }
 }
 
 impl<'a, T> Rc<'a, T>
@@ -56,22 +76,20 @@ where T: Sized {
         allocator: AllocatorRef<'a>,
         value: T,
     ) -> Result<Self, (AllocError, T)> {
-        let size = core::mem::size_of::<RcData<'a, T>>();
-        let size = NonZeroUsize::new(size).unwrap();
 
-        let align = core::mem::align_of::<RcData<'a, T>>();
-        let align = Pow2Usize::new(align).unwrap();
-
+        let align = rc_align_of::<T>();
+        let ctl_alloc_size = rc_ctl_alloc_size(align);
+        let size = NonZeroUsize::new(ctl_alloc_size + mem::size_of::<RcPayload<T>>()).unwrap();
         match unsafe { allocator.alloc(size, align) } {
             Ok(ptr) => {
-                let ptr = ptr.cast::<RcData<'a, T>>().as_ptr();
+                let uptr = (ptr.as_ptr() as usize) + ctl_alloc_size;
+                let data_ptr = uptr as *mut RcPayload<T>;
+                let uptr = uptr - mem::size_of::<RcCtlBlock<'a>>();
+                let ctl_ptr = uptr as *mut RcCtlBlock<'a>;
                 unsafe {
-                    core::ptr::write(ptr,
-                        UnsafeCell::new(
-                            (RcCtlBlock { strong: 1, weak: 0, allocator: allocator },
-                             value)));
-
-                    Ok(Rc { data: &mut *ptr })
+                    ptr::write(data_ptr, RcPayload(UnsafeCell::new(value)));
+                    ptr::write(ctl_ptr, RcCtlBlock { strong: 1, weak: 0, allocator: allocator });
+                    Ok(Rc { data: &*data_ptr })
                 }
             },
             Err(e) => Err((e, value))
@@ -84,30 +102,27 @@ impl<T> Rc<'_, T>
 where T: ?Sized {
 
     pub fn strong_count(rc: &Rc<'_, T>) -> usize {
-        let rc_data = unsafe { &*rc.data.get() };
-        let rc_block = &rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(rc.data) };
         rc_block.strong
     }
 
     pub fn weak_count(rc: &Rc<'_, T>) -> usize {
-        let rc_data = unsafe { &*rc.data.get() };
-        let rc_block = &rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(rc.data) };
         rc_block.weak
     }
 
     pub fn get_mut<'a>(rc: &'a mut Rc<'_, T>) -> Option<&'a mut T> {
-        let rc_data = unsafe { &mut *rc.data.get() };
-        let rc_block = &rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(rc.data) };
         if rc_block.strong == 1 && rc_block.weak == 0 {
-            Some(&mut rc_data.1)
+            Some(unsafe { &mut *rc.data.0.get() })
         } else {
             None
         }
     }
 
     pub fn ptr_eq<'a, 'b>(a: &Rc<'a, T>, b: &Rc<'b, T>) -> bool {
-        a.data as *const RcData<'a, T> as *const u8
-            == b.data as *const RcData<'b, T> as *const u8
+        NonNull::new(a.data as *const RcPayload<T> as *mut RcPayload<T>) ==
+        NonNull::new(b.data as *const RcPayload<T> as *mut RcPayload<T>)
     }
 
     #[cfg(feature = "nightly")]
@@ -116,14 +131,22 @@ where T: ?Sized {
         T: Unsize<U>,
         U: ?Sized
     {
-        let data: &RcData<'a, U> = rc.data;
-        core::mem::forget(rc);
+        let data = rc.data;
+        mem::forget(rc);
         Rc { data }
     }
 
+    pub unsafe fn to_payload<'a>(rc: Rc<'a, T>) -> &'a RcPayload<T> {
+        let data = rc.data;
+        mem::forget(rc);
+        data
+    }
+    pub unsafe fn from_payload<'a>(payload: &'a RcPayload<T>) -> Rc<'a, T> {
+        Rc { data: payload }
+    }
+
     pub fn downgrade<'a>(rc: &Rc<'a, T>) -> RcWeak<'a, T> {
-        let rc_data = unsafe { &mut *rc.data.get() };
-        let mut rc_block = &mut rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(rc.data) };
         rc_block.weak += 1;
         RcWeak { data: rc.data }
     }
@@ -133,8 +156,7 @@ where T: ?Sized {
 impl<'a, T> AsRef<T> for Rc<'a, T> where T: ?Sized {
 
     fn as_ref(&self) -> &T {
-        let rc_data = unsafe { &mut *self.data.get() };
-        &rc_data.1
+        unsafe { &*self.data.0.get() }
     }
 
 }
@@ -150,8 +172,7 @@ impl<'a, T> Borrow<T> for Rc<'a, T> where T: ?Sized {
 impl<'a, T> Clone for Rc<'a, T> where T: ?Sized {
 
     fn clone(&self) -> Rc<'a, T> {
-        let rc_data = unsafe { &mut *self.data.get() };
-        let mut rc_block = &mut rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         rc_block.strong += 1;
         Rc { data: self.data }
     }
@@ -177,14 +198,13 @@ impl<'a, T> Deref for Rc<'a, T> where T: ?Sized {
 impl<'a, T> Drop for Rc<'a, T> where T: ?Sized {
 
     fn drop(&mut self) {
-        let rc_data = unsafe { &mut *self.data.get() };
-        let mut rc_block = &mut rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         assert!(rc_block.strong > 0);
         rc_block.strong -= 1;
         if rc_block.strong == 0 {
             unsafe {
-                core::ptr::drop_in_place(&mut rc_data.1 as *mut T);
-                free_if_unreferenced(rc_data);
+                ptr::drop_in_place(self.data.0.get());
+                free_if_unreferenced(self.data);
             }
         }
     }
@@ -194,8 +214,7 @@ impl<'a, T> Drop for Rc<'a, T> where T: ?Sized {
 impl<'a, T> RcWeak<'a, T> where T: ?Sized {
 
     pub fn upgrade(&self) -> Option<Rc<'a, T>> {
-        let rc_data = unsafe { &mut *self.data.get() };
-        let mut rc_block = &mut rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         if rc_block.strong != 0 {
             rc_block.strong += 1;
             Some(Rc { data: self.data })
@@ -205,14 +224,12 @@ impl<'a, T> RcWeak<'a, T> where T: ?Sized {
     }
 
     pub fn strong_count(&self) -> usize {
-        let rc_data = unsafe { &*self.data.get() };
-        let rc_block = &rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         rc_block.strong
     }
 
     pub fn weak_count(&self) -> usize {
-        let rc_data = unsafe { &*self.data.get() };
-        let rc_block = &rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         rc_block.weak
     }
 
@@ -221,8 +238,7 @@ impl<'a, T> RcWeak<'a, T> where T: ?Sized {
 impl<'a, T> Clone for RcWeak<'a, T> where T: ?Sized {
 
     fn clone(&self) -> RcWeak<'a, T> {
-        let rc_data = unsafe { &mut *self.data.get() };
-        let mut rc_block = &mut rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         rc_block.weak += 1;
         RcWeak { data: self.data }
     }
@@ -232,16 +248,37 @@ impl<'a, T> Clone for RcWeak<'a, T> where T: ?Sized {
 impl<'a, T> Drop for RcWeak<'a, T> where T: ?Sized {
 
     fn drop(&mut self) {
-        let rc_data = unsafe { &mut *self.data.get() };
-        let mut rc_block = &mut rc_data.0;
+        let rc_block = unsafe { rc_ctl_block(self.data) };
         assert!(rc_block.weak > 0);
         rc_block.weak -= 1;
-        unsafe {
-            free_if_unreferenced(rc_data);
-        }
+        unsafe { free_if_unreferenced(self.data); }
     }
 
 }
+
+#[cfg(not(feature = "nightly"))]
+#[macro_export]
+macro_rules! dyn_rc {
+    ( $func_name:ident, $trait:path ) => {
+        fn $func_name<'a, T: $trait>(rc: $crate::mm::Rc<'a, T>) -> $crate::mm::Rc<'a, dyn $trait + 'a> {
+            unsafe { 
+                let data = $crate::mm::Rc::to_payload(rc);
+                $crate::mm::Rc::from_payload(data)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[macro_export]
+macro_rules! dyn_rc {
+    ( $func_name:ident, $trait:path ) => {
+        fn $func_name<'a, T: $trait>(rc: $crate::mm::Rc<'a, T>) -> $crate::mm::Rc<'a, dyn $trait + 'a> {
+            $crate::mm::Rc::to_dyn(rc)
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -350,7 +387,8 @@ mod tests {
         assert!(!a.is_in_use());
     }
 
-    #[cfg(nightly)]
+    dyn_rc!(make_fmt_debug_rc, fmt::Debug);
+
     #[test]
     fn dyn_drop() {
         let mut buffer = [0u8; 64];
@@ -359,7 +397,7 @@ mod tests {
 
         let rc1 = Rc::new(a.to_ref(), IncOnDrop { drop_counter: &dropometer }).unwrap();
         {
-            let mut rc2: Rc<dyn core::fmt::Debug> = Rc::to_dyn(rc1);
+            let mut rc2: Rc<dyn fmt::Debug> = make_fmt_debug_rc(rc1);
             assert_eq!(Rc::strong_count(&rc2), 1);
             assert_eq!(Rc::weak_count(&rc2), 0);
             assert_eq!(dropometer.load(Ordering::SeqCst), 0);
@@ -406,7 +444,7 @@ mod tests {
         let _w2 = w1.clone();
 
         extern crate std;
-        use core::fmt::Write;
+        use fmt::Write;
 
         let mut s = std::string::String::new();
         write!(s, "{:?}", rc1).unwrap();
@@ -420,6 +458,24 @@ mod tests {
         let rc = Rc::new(a.to_ref(), 12345_u32).unwrap();
         let b: &u32 = rc.deref();
         assert_eq!(b, &12345_u32);
+    }
+
+    #[test]
+    fn unsafe_cell_of_t_to_unsafe_cell_of_trait() {
+        let _x: &UnsafeCell<dyn fmt::Debug> = &UnsafeCell::new(0_u32);
+    }
+
+    #[test]
+    fn rc_payload_of_t_to_rc_payload_of_trait() {
+        let _x: &RcPayload<dyn fmt::Debug> = &RcPayload(UnsafeCell::new(0_u32));
+    }
+
+    #[repr(align(64))]
+    struct Align64(u32);
+
+    #[test]
+    fn align_of_align64() {
+        assert_eq!(mem::align_of::<Align64>(), 64);
     }
 
 }

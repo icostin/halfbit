@@ -345,6 +345,10 @@ impl Pow2Usize {
     pub fn is_non_null_ptr_aligned<T>(&self, nnptr: NonNull<T>) -> bool {
         self.is_ptr_aligned(nnptr.as_ptr())
     }
+
+    pub fn align_up(&self, value: usize) -> Option<usize> {
+        usize_align_up(value, *self)
+    }
 }
 
 use core::num::Wrapping;

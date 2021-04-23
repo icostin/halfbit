@@ -17,7 +17,7 @@ use halfbit::mm::Allocator;
 use halfbit::mm::Malloc;
 use halfbit::mm::Vector;
 //use halfbit::mm::String;
-use halfbit::mm::Rc;
+//use halfbit::mm::Rc;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOPartialError;
 use halfbit::io::IOError;
@@ -33,6 +33,7 @@ use halfbit::log_error;
 use halfbit::log_crit;
 
 use halfbit::data_cell;
+use halfbit::dyn_rc;
 use halfbit::data_cell::U64Cell;
 use halfbit::data_cell::ByteVectorCell;
 use halfbit::data_cell::DataCell;
@@ -61,6 +62,8 @@ struct Item<'a> {
     name: &'a str,
     file: RefCell<std::fs::File>,
 }
+
+dyn_rc!(make_data_cell_ops_rc, DataCellOps);
 
 struct ProcessingStatus {
     accessible_items: usize,
@@ -425,7 +428,7 @@ fn process_item<'x>(
         file: RefCell::new(f),
     };
     let root = match xc.rc(item) {
-        Ok(b) => Rc::to_dyn::<dyn DataCellOps + 'x>(b),
+        Ok(b) => make_data_cell_ops_rc(b),
         Err((e, item)) => {
             log_error!(xc, "error:{:?}:{:?}", item.name, e);
             status.attributes_failed_to_compute += eval_expr_list.len();

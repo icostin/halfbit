@@ -27,5 +27,5 @@ name = "halfbit"
 
 [[example]]
 name = "hb"
-required-features = ["use-libc", "use-std", "nightly"]
+required-features = ["use-libc", "use-std"]
 
