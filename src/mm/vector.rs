@@ -2,12 +2,20 @@ use core::ptr::NonNull;
 use core::fmt::Display;
 use core::fmt::Formatter;
 use core::cmp::min;
+use core::convert::AsRef;
+use core::convert::AsMut;
+use core::convert::TryInto;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
 
 use crate::io::stream::Write;
+use crate::io::stream::Read;
+use crate::io::stream::Seek;
+use crate::io::stream::SeekFrom;
+use crate::io::stream::relative_position;
 use crate::io::ErrorCode as IOErrorCode;
+use crate::io::IOError;
 use crate::io::IOResult;
 
 use crate::xc_err;
@@ -244,6 +252,69 @@ impl<'a> Write for Vector<'a, u8> {
                     "byte-vector append failed: {}", e))
         }
     }
+}
+
+/* ByteVectorStream *********************************************************/
+pub struct ByteVectorStream<'a> {
+    data: Vector<'a, u8>,
+    pos: usize,
+}
+
+impl<'a> ByteVectorStream<'a> {
+
+    pub fn new(data: Vector<'a, u8>) -> ByteVectorStream {
+        ByteVectorStream { data, pos: 0 }
+    }
+
+}
+
+impl<'a> AsRef<Vector<'a, u8>> for ByteVectorStream<'a> {
+    fn as_ref(&self) -> &Vector<'a, u8> {
+        &self.data
+    }
+}
+
+impl<'a> AsMut<Vector<'a, u8>> for ByteVectorStream<'a> {
+    fn as_mut(&mut self) -> &mut Vector<'a, u8> {
+        &mut self.data
+    }
+}
+
+impl<'a> Seek for ByteVectorStream<'a> {
+    fn seek<'x>(
+        &mut self,
+        disp: SeekFrom,
+        _xc: &mut ExecutionContext<'x>
+    ) -> IOResult<'x, u64> {
+        self.pos = match disp {
+            SeekFrom::Start(disp) => disp,
+            SeekFrom::Current(disp) => relative_position(self.pos as u64, disp)?,
+            SeekFrom::End(disp) => relative_position(self.data.len() as u64, disp)?,
+        }.try_into().map_err(|_| IOError::with_str(IOErrorCode::UnsupportedPosition,
+                                                   "seek to position too large for usize"))?;
+        Ok(self.pos as u64)
+    }
+}
+
+impl<'a> Read for ByteVectorStream<'a> {
+
+    fn read<'x>(
+        &mut self,
+        buf: &mut [u8],
+        _exe_ctx: &mut ExecutionContext<'x>
+    ) -> IOResult<'x, usize> {
+        if self.pos < self.data.len() {
+            let n = min(self.data.len() - self.pos, buf.len());
+            buf[0..n].copy_from_slice(&self.data.as_slice()[self.pos..self.pos + n]);
+            Ok(n)
+        } else {
+            Ok(0)
+        }
+    }
+
+}
+
+impl<'a> Write for ByteVectorStream<'a> {
 }
 
 #[cfg(test)]

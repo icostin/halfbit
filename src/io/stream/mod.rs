@@ -20,7 +20,7 @@ pub enum SeekFrom {
     End(i64),
 }
 
-fn relative_position<'a>(
+pub fn relative_position<'a>(
     pos: u64,
     disp: i64
 ) -> IOResult<'static, u64> {
