@@ -4,7 +4,7 @@ quick-test: dev-build
 	./target/debug/examples/hb -e fourty_two makefile
 
 dev-build:
-	cargo +stable build --features=use-libc,use-std
+	cargo +stable test --features=use-libc,use-std
 	cargo +stable build --features=use-libc,use-std --examples
 	cargo +nightly test --features=use-libc,use-std,nightly
 	cargo +nightly build --features=use-libc,use-std,nightly --examples

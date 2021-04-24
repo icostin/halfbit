@@ -170,6 +170,9 @@ impl U64Cell {
         let fmt_pack = MiniNumFmtPack::default();
         U64Cell { n, fmt_pack }
     }
+    pub fn with_fmt(n: u64, fmt_pack: MiniNumFmtPack) -> Self {
+        U64Cell { n, fmt_pack }
+    }
 }
 
 impl DataCellOps for U64Cell {
@@ -190,7 +193,7 @@ impl DataCellOps for U64Cell {
 
 /* ByteVector ***************************************************************/
 #[derive(Debug)]
-pub struct ByteVector<'a>(Vector<'a, u8>);
+pub struct ByteVector<'a>(pub Vector<'a, u8>);
 
 impl<'a> DataCellOpsMut for ByteVector<'a> {
 
@@ -278,6 +281,88 @@ impl<'a, T: DataCellOps> DataCellOpsMut for DCOVector<'a, T> {
 
 }
 
+/* Record *******************************************************************/
+#[derive(Debug)]
+pub struct RecordDesc<'a> {
+    field_names: &'a [&'a str],
+    record_name: &'a str,
+}
+
+impl<'a> RecordDesc<'a> {
+
+    pub const fn new(
+        record_name: &'a str,
+        field_names: &'a [&'a str],
+    ) -> RecordDesc<'a> {
+        RecordDesc { field_names, record_name }
+    }
+
+    pub fn field_count(&self) -> usize {
+        self.field_names.len()
+    }
+}
+
+#[derive(Debug)]
+pub struct Record<'a> {
+    data: Vector<'a, DataCell<'a>>,
+    desc: &'a RecordDesc<'a>,
+}
+
+impl<'a> Record<'a> {
+
+    pub fn new(
+        desc: &'a RecordDesc<'a>,
+        allocator: AllocatorRef<'a>,
+    ) -> Result<Self, AllocError> {
+        let mut data: Vector<'a, DataCell<'a>> = Vector::new(allocator);
+        let n = desc.field_count();
+        data.reserve(n)?;
+        for _i in 0..n {
+            data.push(DataCell::Nothing).unwrap();
+        }
+        Ok(Record { data, desc })
+    }
+
+    pub fn get_fields_mut<'b>(&'b mut self) -> &'b mut [DataCell<'a>] {
+        self.data.as_mut_slice()
+    }
+}
+
+impl<'a> DataCellOpsMut for Record<'a> {
+
+    fn get_property_mut<'x>(
+        &mut self,
+        _property_name: &str,
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        Err(Error::NotApplicable)
+    }
+
+    fn output_as_human_readable_mut<'w, 'x>(
+        &mut self,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        out.write_all(self.desc.record_name.as_bytes(), xc)?;
+        out.write_all(b"(", xc)?;
+        let v = self.data.as_slice();
+        let mut first = true;
+        for i in 0..self.desc.field_names.len() {
+            if v[i].is_nothing() { continue; }
+            if first {
+                first = false;
+            } else {
+                out.write_all(b", ", xc)?;
+            }
+            out.write_all(self.desc.field_names[i].as_bytes(), xc)?;
+            out.write_all(b": ", xc)?;
+            v[i].output_as_human_readable(out, xc)?;
+        }
+        out.write_all(b")", xc)?;
+        Ok(())
+    }
+}
+
 /* DataCell *****************************************************************/
 #[derive(Debug)]
 pub enum DataCell<'d> {
@@ -287,6 +372,32 @@ pub enum DataCell<'d> {
     StaticId(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
     CellVector(Rc<'d, RefCell<DCOVector<'d, DataCell<'d>>>>),
+    Record(Rc<'d, RefCell<Record<'d>>>),
+}
+
+impl<'d> DataCell<'d> {
+
+    pub fn is_nothing(&self) -> bool {
+        match self {
+            DataCell::Nothing => true,
+            _ => false
+        }
+    }
+
+    pub fn new() -> Self {
+        DataCell::Nothing
+    }
+
+    pub fn from_u64_cell(n: U64Cell) -> Self {
+        DataCell::U64(n)
+    }
+    pub fn from_u64(n: u64) -> Self {
+        Self::from_u64_cell(U64Cell::new(n))
+    }
+
+    pub fn from_static_id(s: &'d str) -> Self {
+        DataCell::StaticId(s)
+    }
 }
 
 impl<'d> DataCellOps for DataCell<'d> {
@@ -320,6 +431,7 @@ impl<'d> DataCellOps for DataCell<'d> {
             },
             DataCell::Dyn(v) => v.deref().output_as_human_readable(w, xc),
             DataCell::CellVector(v) => v.deref().output_as_human_readable(w, xc),
+            DataCell::Record(v) => v.deref().output_as_human_readable(w, xc),
         }
     }
 
@@ -350,5 +462,64 @@ mod tests {
         assert_eq!(Error::NotApplicable, Abc().get_property("zilch", &mut xc).unwrap_err());
     }
 
+    #[test]
+    fn record_human_readable() {
+        use crate::mm::{ Allocator, BumpAllocator };
+        let mut buffer = [0_u8; 1000];
+        let a = BumpAllocator::new(&mut buffer);
+        let mut xc = ExecutionContext::with_allocator_and_logless(a.to_ref());
+        let desc = RecordDesc::new("Rectangle", &["width", "height", "mode"]);
+        let mut r = Record::new(&desc, a.to_ref()).unwrap();
+
+        {
+            let mut o = xc.byte_vector();
+            r.output_as_human_readable_mut(&mut o, &mut xc).unwrap();
+            assert_eq!(core::str::from_utf8(o.as_slice()).unwrap(), "Rectangle()");
+        }
+
+        {
+            r.data.as_mut_slice()[1] = DataCell::from_u64(5);
+            let mut o = xc.byte_vector();
+            r.output_as_human_readable_mut(&mut o, &mut xc).unwrap();
+            assert_eq!(core::str::from_utf8(o.as_slice()).unwrap(),
+                       "Rectangle(height: 5)");
+        }
+
+        {
+            r.data.as_mut_slice()[1] = DataCell::from_u64(7);
+            r.data.as_mut_slice()[2] = DataCell::from_static_id("FUNKY");
+            let mut o = xc.byte_vector();
+            r.output_as_human_readable_mut(&mut o, &mut xc).unwrap();
+            assert_eq!(core::str::from_utf8(o.as_slice()).unwrap(),
+                       "Rectangle(height: 7, mode: FUNKY)");
+        }
+
+        {
+            r.data.as_mut_slice()[0] = DataCell::from_u64(8);
+            r.data.as_mut_slice()[1] = DataCell::new();
+            r.data.as_mut_slice()[2] = DataCell::from_static_id("CHECKERED");
+            let mut o = xc.byte_vector();
+            r.output_as_human_readable_mut(&mut o, &mut xc).unwrap();
+            assert_eq!(core::str::from_utf8(o.as_slice()).unwrap(),
+                       "Rectangle(width: 8, mode: CHECKERED)");
+        }
+
+        {
+            r.data.as_mut_slice()[0] = DataCell::from_u64(9);
+            use crate::num::fmt as num_fmt;
+            let nf = num_fmt::MiniNumFmtPack::new(
+                num_fmt::Radix::new(16).unwrap(),
+                num_fmt::RadixNotation::DefaultPrefix,
+                num_fmt::MinDigitCount::new(2).unwrap(),
+                num_fmt::PositiveSign::Plus,
+                num_fmt::ZeroSign::Space);
+            r.data.as_mut_slice()[1] = DataCell::from_u64_cell(U64Cell::with_fmt(10, nf));
+            r.data.as_mut_slice()[2] = DataCell::from_static_id("WEIRDO");
+            let mut o = xc.byte_vector();
+            r.output_as_human_readable_mut(&mut o, &mut xc).unwrap();
+            assert_eq!(core::str::from_utf8(o.as_slice()).unwrap(),
+                       "Rectangle(width: 9, height: +0x0A, mode: WEIRDO)");
+        }
+    }
 }
 

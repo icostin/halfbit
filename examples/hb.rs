@@ -40,6 +40,8 @@ use halfbit::data_cell::DataCell;
 use halfbit::data_cell::DataCellOps;
 use halfbit::data_cell::DCOVector;
 use halfbit::data_cell::Error;
+use halfbit::data_cell::RecordDesc;
+use halfbit::data_cell::Record;
 use halfbit::data_cell::expr::Source;
 use halfbit::data_cell::expr::Parser;
 use halfbit::data_cell::expr::Expr;
@@ -131,6 +133,7 @@ impl<'a> DataCellOps for Item<'a> {
             "first_byte" => extract_first_byte(&self, xc),
             "first_8_bytes" => first_8_bytes(&self, xc),
             "tof_ids" => identify_top_of_file_records(&self, xc),
+            "elf_header" => extract_elf_header(&self, xc),
             _ => Err(data_cell::Error::NotApplicable),
         }
     }
@@ -152,10 +155,18 @@ fn process_args(args: Vec<StdString>) -> Invocation {
         .arg(clap::Arg::with_name("eval")
                 .short("e")
                 .long("eval")
-                .help("computes given expressions for each item")
+                .help("computes given comma-separated expressions on each item")
                 .takes_value(true)
                 .multiple(true)
                 .number_of_values(1))
+        .after_help("
+Item properties:
+    first_byte          first content byte
+    first_8_bytes       byte array with first 8 bytes (or entire content if shorter)
+    tof_ids             array of identifiers with matching top-of-file exact data formats
+    elf_header          treat content as ELF file header record
+")
+        .setting(clap::AppSettings::ArgRequiredElseHelp)
         .get_matches_from(args);
 
     let inv = Invocation {
@@ -237,6 +248,7 @@ fn identify_top_of_file_records<'a, 'x>(
         ids.push(DataCell::StaticId("dos_exe"))?;
     } else if tof.starts_with(b"ZM") {
         ids.push(DataCell::StaticId("dos_exe"))?;
+        ids.push(DataCell::StaticId("dos_exe_zm"))?;
     } else if tof.starts_with(b"\x1F\x8B") {
         ids.push(DataCell::StaticId("gzip"))?;
     } else if tof.starts_with(b"BZ") {
@@ -258,11 +270,22 @@ fn identify_top_of_file_records<'a, 'x>(
                 _ => {}
             }
         }
+    } else if tof.starts_with(b"7z\xBC\xAF\x27\x1C") {
+        ids.push(DataCell::StaticId("seven_zip"))?;
+    } else if tof.starts_with(b"\xFD7zXZ\x00") {
+        ids.push(DataCell::StaticId("xz"))?;
+    } else if tof.starts_with(b"\x1F\x8B") {
+        ids.push(DataCell::StaticId("gzip"))?;
+    } else if tof.starts_with(b"BZh") {
+        ids.push(DataCell::StaticId("bzip2"))?;
+    } else if tof.starts_with(b"SQLite format 3\x00") {
+        ids.push(DataCell::StaticId("sqlite3"))?;
+    } else if tof.starts_with(b"qres\x00\x00\x00\x01") {
+        ids.push(DataCell::StaticId("qt_rcc"))?;
     }
     Ok(DataCell::CellVector(xc.rc(RefCell::new(DCOVector(ids)))?))
 }
 
-/*
 pub const ELFCLASSNONE: u8 = 0;
 pub const ELFCLASS32: u8 = 1;
 pub const ELFCLASS64: u8 = 2;
@@ -271,16 +294,26 @@ pub const ELFDATANONE: u8 = 0;
 pub const ELFDATA2LSB: u8 = 1;
 pub const ELFDATA2MSB: u8 = 2;
 
-const ELF_HEADER_FIELDS: &[&'static str] = &[
-    "ei_magic", "ei_class", "ei_data", "ei_version",
-    "ei_osabi", "ei_abiversion", "ei_pad",
-    "e_type", "e_machine", "e_version", "e_entry", "e_phoff", "e_shoff",
-];
+const ELF_HEADER: RecordDesc = RecordDesc::new(
+    "elf_header",
+    &[
+        "ei_magic", "ei_class", "ei_data", "ei_version",
+        "ei_osabi", "ei_abiversion", "ei_pad",
+        "e_type", "e_machine", "e_version", "e_entry", "e_phoff", "e_shoff",
+    ]);
 
-fn elf_header<'a, 'x>(
-    item: &mut Item<'a>,
+fn extract_elf_header<'a, 'x>(
+    item: &Item<'a>,
     xc: &mut ExecutionContext<'x>,
 ) -> Result<DataCell<'x>, Error<'x>> {
+    let mut eh = Record::new(&ELF_HEADER, xc.get_main_allocator())?;
+    let ehf = eh.get_fields_mut();
+    let mut f = item.file.borrow_mut();
+    let mut magic = [0_u8; 4];
+    f.seek_read(0, &mut magic, xc)?;
+    ehf[0] = DataCell::ByteVector(xc.rc(RefCell::new(data_cell::ByteVector(xc.byte_vector_clone(&magic)?)))?);
+    Ok(DataCell::Record(xc.rc(RefCell::new(eh))?))
+    /*
     let mut eh: Vector<'x, DataCell<'x>> = xc.vector();
     let mut magic = [0_u8; 4];
     item.stream.seek_read(0, &mut magic, xc)?;
@@ -385,9 +418,8 @@ fn elf_header<'a, 'x>(
     eh.push(DataCell::U64(e_phoff))?;
     eh.push(DataCell::U64(e_shoff))?;
 
-    Ok(DataCell::Record(eh, ELF_HEADER_FIELDS))
-}
 */
+}
 
 fn output_expr_value<'x>(
     item_name: &str,

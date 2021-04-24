@@ -42,6 +42,16 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
+    pub fn with_allocator_and_logless(
+        allocator: AllocatorRef<'a>
+    ) -> ExecutionContext<'a> {
+        ExecutionContext::new(
+            allocator,
+            allocator,
+            NULL_STREAM.get(),
+            LogLevel::Critical)
+    }
+
     pub fn nop() -> ExecutionContext<'a> {
         ExecutionContext {
             main_allocator: NOP_ALLOCATOR.to_ref(),
@@ -100,6 +110,15 @@ impl<'a> ExecutionContext<'a> {
     pub fn vector<T>(&self) -> Vector<'a, T> {
         Vector::new(self.get_main_allocator())
     }
+
+    pub fn byte_vector(&self) -> Vector<'a, u8> {
+        self.vector()
+    }
+
+    pub fn byte_vector_clone(&self, data: &[u8]) -> Result<Vector<'a, u8>, AllocError> {
+        Vector::from_slice(self.get_main_allocator(), data)
+    }
+
     pub fn string(&self) -> String<'a> {
         String::new(self.get_main_allocator())
     }

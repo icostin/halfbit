@@ -1,4 +1,5 @@
 use core::ptr::NonNull;
+use core::fmt;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
@@ -12,6 +13,28 @@ pub enum AllocError {
     NotEnoughMemory, // the proverbial hits the fan
     OperationFailed, // failure performing the operation (OS mem mapping error)
     UnsupportedOperation, // alloc, resize, free not supported
+}
+
+impl AllocError {
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            AllocError::InvalidAlignment => "invalid alignment",
+            AllocError::AlignedSizeTooBig => "aligned size too big",
+            AllocError::UnsupportedAlignment => "unsupported alignment",
+            AllocError::UnsupportedSize => "unsupported size",
+            AllocError::NotEnoughMemory => "not enough memory",
+            AllocError::OperationFailed => "operation failed",
+            AllocError::UnsupportedOperation => "unsupported operation",
+        }
+    }
+
+}
+
+impl fmt::Display for AllocError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_str().fmt(f)
+    }
 }
 
 impl From<AllocError> for core::fmt::Error {

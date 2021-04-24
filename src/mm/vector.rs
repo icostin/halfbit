@@ -1,9 +1,17 @@
 use core::ptr::NonNull;
 use core::fmt::Display;
 use core::fmt::Formatter;
+use core::cmp::min;
 
 use crate::num::NonZeroUsize;
 use crate::num::Pow2Usize;
+
+use crate::io::stream::Write;
+use crate::io::ErrorCode as IOErrorCode;
+use crate::io::IOResult;
+
+use crate::xc_err;
+use crate::ExecutionContext;
 
 use super::Allocator;
 use super::AllocatorRef;
@@ -214,6 +222,27 @@ impl<'a, T: Display> Display for Vector<'a, T> {
             Display::fmt(v, f)?;
         }
         Ok(())
+    }
+}
+
+impl<'a> Write for Vector<'a, u8> {
+    fn write<'x>(
+        &mut self,
+        buf: &[u8],
+        xc: &mut ExecutionContext<'x>
+    ) -> IOResult<'x, usize> {
+        if self.len < self.cap {
+            let copy_size = min(self.cap - self.len, buf.len());
+            self.append_from_slice(&buf[0..copy_size]).unwrap();
+            Ok(copy_size)
+        } else {
+            self.append_from_slice(buf)
+                .map(|_| buf.len())
+                .map_err(|e| xc_err!(
+                    xc, IOErrorCode::NoSpace,
+                    "byte-vector append out of memory",
+                    "byte-vector append failed: {}", e))
+        }
     }
 }
 
@@ -428,6 +457,25 @@ mod tests {
         core::mem::drop(v1);
         assert_eq!(v2.as_slice(), [ 2_u16, 4, 6, 8 ]);
         assert!(a2.is_in_use());
+    }
+
+    #[test]
+    fn byte_vector_write() {
+        let mut buf = [0_u8; 10];
+        let a = SingleAlloc::new(&mut buf);
+        let mut v = Vector::<u8>::new(a.to_ref());
+        let mut xc = ExecutionContext::nop();
+        v.write_all(b"Hello", &mut xc).unwrap();
+        assert_eq!(v.as_slice(), b"Hello");
+        let w = b" world!";
+        let e = v.write_all(w, &mut xc).unwrap_err();
+        assert_eq!(e.get_error_code(), IOErrorCode::NoSpace);
+        let n = e.get_processed_size();
+        assert!(n < 5);
+        v.reserve(5 - n).unwrap();
+        let e = v.write_all(&w[n..], &mut xc).unwrap_err();
+        assert_eq!(e.get_error_code(), IOErrorCode::NoSpace);
+        assert_eq!(e.get_processed_size(), 5 - n);
     }
 }
 
