@@ -1,6 +1,5 @@
 extern crate clap;
 
-
 use core::borrow::BorrowMut;
 use core::cell::RefCell;
 use core::fmt;
@@ -217,7 +216,7 @@ fn process_item<'x>(
         file: match xc.rc(RefCell::new(f)) {
             Ok(f) => f,
             Err((e, _f)) => {
-                log_error!(xc, "error:{:?}:{:?}", item_name, e);
+                log_error!(xc, "error:{:?}:{}", item_name, e);
                 status.attributes_failed_to_compute += eval_expr_list.len();
                 return status;
             }
@@ -226,7 +225,7 @@ fn process_item<'x>(
     let root = match xc.rc(item) {
         Ok(b) => make_data_cell_ops_rc(b),
         Err((e, item)) => {
-            log_error!(xc, "error:{:?}:{:?}", item.name, e);
+            log_error!(xc, "error:{:?}:{}", item.name, e);
             status.attributes_failed_to_compute += eval_expr_list.len();
             return status;
         }
@@ -234,7 +233,7 @@ fn process_item<'x>(
     let mut root = DataCell::Dyn(root);
 
     for expr in eval_expr_list {
-        log_info!(xc, "computing expression {:?} for item {:?}", expr, item_name);
+        log_info!(xc, "computing expression {} for item {:?}", expr, item_name);
         if expr.eval_on_cell(&mut root, xc)
             .and_then(|v| output_expr_value(item_name, expr, &v, out, xc))
             .map(|_| { status.attributes_computed_ok += 1; })
@@ -246,7 +245,7 @@ fn process_item<'x>(
                 },
                 Error::Output(oe) => {
                     status.output_error = true;
-                    log_crit!(xc, "fatal:{:?}:{:?}:{:?}", item_name, expr, oe);
+                    log_crit!(xc, "fatal:{:?}:{:?}:{}", item_name, expr, oe);
                     Err(())
                 },
                 _ => {
