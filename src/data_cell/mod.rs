@@ -15,10 +15,13 @@ use crate::io::IOError;
 use crate::io::IOPartialError;
 use crate::io::ErrorCode;
 use crate::io::stream::Write;
+use crate::io::stream::SeekFrom;
+use crate::io::stream::Stream;
 use crate::num::fmt::MiniNumFmtPack;
 
 pub mod expr;
 pub mod eval;
+pub mod content_stream;
 
 /* Error ********************************************************************/
 #[derive(Debug, PartialEq)]
@@ -67,6 +70,29 @@ impl<'a> From<IOPartialError<'a>> for Error<'a> {
     fn from(src: IOPartialError<'a>) -> Self {
         Error::IO(src.to_error())
     }
+}
+
+impl<'a> From<IOError<'a>> for Error<'a> {
+    fn from(src: IOError<'a>) -> Self {
+        Error::IO(src)
+    }
+}
+
+pub fn output_byte_slice_as_human_readable_text<'w, 'x>(
+    data: &[u8],
+    out: &mut (dyn Write + 'w),
+    _xc: &mut ExecutionContext<'x>
+) -> Result<(), Error<'x>> {
+    for &b in data {
+        if b == 0x22 || b == 0x5C {
+            write!(out, "\\{}", b as char)?;
+        } else if b >= 0x20_u8 && b <= 0x7E_u8 {
+            write!(out, "{}", b as char)?;
+        } else {
+            write!(out, "\\x{:02X}", b)?;
+        }
+    }
+    Ok(())
 }
 
 /* DataCellOpsMut ***********************************************************/
@@ -214,18 +240,10 @@ impl<'a> DataCellOpsMut for ByteVector<'a> {
     fn output_as_human_readable_mut<'w, 'x>(
         &mut self,
         out: &mut (dyn Write + 'w),
-        _xc: &mut ExecutionContext<'x>,
+        xc: &mut ExecutionContext<'x>,
     ) -> Result<(), Error<'x>> {
         write!(out, "b\"")?;
-        for &b in self.0.as_slice() {
-            if b == 0x22 || b == 0x5C {
-                write!(out, "\\{}", b as char)?;
-            } else if b >= 0x20_u8 && b <= 0x7E_u8 {
-                write!(out, "{}", b as char)?;
-            } else {
-                write!(out, "\\x{:02X}", b)?;
-            }
-        }
+        output_byte_slice_as_human_readable_text(self.0.as_slice(), out, xc)?;
         write!(out, "\"")?;
         Ok(())
     }
@@ -373,6 +391,7 @@ pub enum DataCell<'d> {
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
     CellVector(Rc<'d, RefCell<DCOVector<'d, DataCell<'d>>>>),
     Record(Rc<'d, RefCell<Record<'d>>>),
+    ByteStream(Rc<'d, RefCell<dyn Stream + 'd>>),
 }
 
 impl<'d> DataCell<'d> {
@@ -432,7 +451,38 @@ impl<'d> DataCellOps for DataCell<'d> {
             DataCell::Dyn(v) => v.deref().output_as_human_readable(w, xc),
             DataCell::CellVector(v) => v.deref().output_as_human_readable(w, xc),
             DataCell::Record(v) => v.deref().output_as_human_readable(w, xc),
+            DataCell::ByteStream(_v) => panic!(),
         }
+    }
+
+}
+
+impl<T: Stream> DataCellOpsMut for T {
+
+    fn get_property_mut<'x>(
+        &mut self,
+        _property_name: &str,
+        _xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, Error<'x>> {
+        Err(Error::NotApplicable)
+    }
+
+    fn output_as_human_readable_mut<'w, 'x>(
+        &mut self,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        self.seek(SeekFrom::Start(0), xc)?;
+        out.write_all(b"b\"", xc)?;
+        let mut buf = [0_u8; 1024];
+        loop {
+            let chunk_size = self.read_uninterrupted(&mut buf, xc)?;
+            if chunk_size == 0 { break; }
+            output_byte_slice_as_human_readable_text(&buf[0..chunk_size], out, xc)?;
+        }
+        out.write_all(b"\"", xc)?;
+
+        Ok(())
     }
 
 }

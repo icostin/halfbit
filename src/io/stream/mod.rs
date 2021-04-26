@@ -1,5 +1,4 @@
-use core::fmt::Write as FmtWrite;
-use core::fmt::Result as FmtResult;
+use core::fmt;
 use core::cell::UnsafeCell;
 
 use crate::exectx::ExecutionContext;
@@ -14,12 +13,14 @@ use super::IOPartialError;
 use super::IOResult;
 use super::IOPartialResult;
 
+/* SeekFrom *****************************************************************/
 pub enum SeekFrom {
     Start(u64),
     Current(i64),
     End(i64),
 }
 
+/* relative_position ********************************************************/
 pub fn relative_position<'a>(
     pos: u64,
     disp: i64
@@ -42,6 +43,7 @@ pub fn relative_position<'a>(
     }
 }
 
+/* Read *********************************************************************/
 pub trait Read {
 
     fn read<'a>(
@@ -204,6 +206,7 @@ pub trait Read {
 
 }
 
+/* Write ********************************************************************/
 pub trait Write {
     fn write<'a>(
         &mut self,
@@ -237,6 +240,7 @@ pub trait Write {
 
 }
 
+/* Seek *********************************************************************/
 pub trait Seek {
     fn seek<'a>(
         &mut self,
@@ -248,6 +252,7 @@ pub trait Seek {
     }
 }
 
+/* Truncate *****************************************************************/
 pub trait Truncate {
     fn truncate<'a>(
         &mut self,
@@ -259,7 +264,8 @@ pub trait Truncate {
     }
 }
 
-pub trait RandomAccessRead: Read + Seek {
+/* RandomAccessRead *********************************************************/
+pub trait RandomAccessRead: Read + Seek + fmt::Debug {
     fn seek_read<'a>(
         &mut self,
         pos: u64,
@@ -270,13 +276,14 @@ pub trait RandomAccessRead: Read + Seek {
         self.read_uninterrupted(buf, exe_ctx)
     }
 }
-impl<T: Read + Seek> RandomAccessRead for T {}
+impl<T: Read + Seek + fmt::Debug> RandomAccessRead for T {}
 
+/* Stream *******************************************************************/
 pub trait Stream: RandomAccessRead + Write + Truncate {}
 impl<T: RandomAccessRead + Write + Truncate> Stream for T {}
 
-impl<'a> FmtWrite for dyn Write + 'a {
-    fn write_str(&mut self, s: &str) -> FmtResult {
+impl<'a> fmt::Write for dyn Write + 'a {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
         let mut xc = ExecutionContext::nop();
         self.write_all(s.as_bytes(), &mut xc)?;
         Ok(())
@@ -362,6 +369,7 @@ mod tests {
     use super::*;
     use crate::exectx::ExecutionContext;
     use crate::io::ErrorCode;
+    use core::fmt::Write as FmtWrite;
 
     struct DefaultStream {}
     impl Read for DefaultStream {}
@@ -763,6 +771,7 @@ mod tests {
         assert_eq!(e2.get_error_code(), ErrorCode::Unsuccessful);
     }
 
+    #[derive(Debug)]
     struct SeekReadTester {
         pos: u64,
         interrupt_next_read: bool,

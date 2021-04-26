@@ -14,6 +14,7 @@ pub enum ErrorCode {
     UnexpectedEnd,
     UnsupportedPosition, // seek to a negative offset or to some large position past end that is not supported by the stream handler
     NoSpace,
+    ResourceUnavailable,
 }
 
 impl ErrorCode {
@@ -27,6 +28,7 @@ impl ErrorCode {
             ErrorCode::UnexpectedEnd => "unexpected end",
             ErrorCode::UnsupportedPosition => "unsupported position",
             ErrorCode::NoSpace => "no space",
+            ErrorCode::ResourceUnavailable => "resource unavailable",
         }
     }
 }

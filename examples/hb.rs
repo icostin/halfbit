@@ -1,52 +1,41 @@
 extern crate clap;
 
+
+use core::borrow::BorrowMut;
 use core::cell::RefCell;
 use core::fmt;
+use core::fmt::Write as FmtWrite;
 
-use std::string::String as StdString;
-use std::io::stdout;
 use std::io::stderr;
-use std::fmt::Write as FmtWrite;
+use std::io::stdout;
+use std::string::String as StdString;
 
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
-use halfbit::num::fmt as num_fmt;
-use halfbit::conv::int_be_decode;
-use halfbit::mm::Allocator;
-//use halfbit::mm::AllocError;
-use halfbit::mm::Malloc;
-use halfbit::mm::Vector;
-//use halfbit::mm::String;
-//use halfbit::mm::Rc;
-use halfbit::io::ErrorCode as IOErrorCode;
-use halfbit::io::IOPartialError;
-use halfbit::io::IOError;
-use halfbit::io::stream::SeekFrom;
-use halfbit::io::stream::Seek;
-use halfbit::io::stream::Read;
-use halfbit::io::stream::Write;
-use halfbit::io::stream::RandomAccessRead;
-use halfbit::log_debug;
-use halfbit::log_info;
-use halfbit::log_warn;
-use halfbit::log_error;
-use halfbit::log_crit;
-
-use halfbit::data_cell;
-use halfbit::dyn_rc;
-use halfbit::data_cell::U64Cell;
-use halfbit::data_cell::ByteVectorCell;
 use halfbit::data_cell::DataCell;
 use halfbit::data_cell::DataCellOps;
-use halfbit::data_cell::DCOVector;
+use halfbit::data_cell::DataCellOpsMut;
 use halfbit::data_cell::Error;
-use halfbit::data_cell::RecordDesc;
-use halfbit::data_cell::Record;
-use halfbit::data_cell::expr::Source;
-use halfbit::data_cell::expr::Parser;
-use halfbit::data_cell::expr::Expr;
-use halfbit::data_cell::expr::BasicTokenType;
+use halfbit::data_cell::content_stream::ContentStream;
 use halfbit::data_cell::eval::Eval;
+use halfbit::data_cell::expr::BasicTokenType;
+use halfbit::data_cell::expr::Expr;
+use halfbit::data_cell::expr::Parser;
+use halfbit::data_cell::expr::Source;
+use halfbit::data_cell;
+use halfbit::dyn_rc;
+use halfbit::io::ErrorCode as IOErrorCode;
+use halfbit::io::IOError;
+use halfbit::io::stream::Write;
+use halfbit::log_crit;
+use halfbit::log_debug;
+use halfbit::log_error;
+use halfbit::log_info;
+use halfbit::log_warn;
+use halfbit::mm::Allocator;
+use halfbit::mm::Malloc;
+use halfbit::mm::Rc;
+use halfbit::mm::Vector;
 
 const HB_VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -62,7 +51,7 @@ struct Invocation {
 
 struct Item<'a> {
     name: &'a str,
-    file: RefCell<std::fs::File>,
+    file: Rc<'a, RefCell<std::fs::File>>,
 }
 
 dyn_rc!(make_data_cell_ops_rc, DataCellOps);
@@ -128,14 +117,10 @@ impl<'a> DataCellOps for Item<'a> {
         property_name: &str,
         xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
-        match property_name {
-            "fourty_two" => Ok(DataCell::U64(U64Cell::new(42))),
-            "first_byte" => extract_first_byte(&self, xc),
-            "first_8_bytes" => first_8_bytes(&self, xc),
-            "tof_ids" => identify_top_of_file_records(&self, xc),
-            "elf_header" => extract_elf_header(&self, xc),
-            _ => Err(data_cell::Error::NotApplicable),
-        }
+        let mut x = self.file.as_ref().borrow_mut();
+        let mut f: &mut std::fs::File = x.borrow_mut();
+        let mut cs = ContentStream::new(&mut f);
+        cs.get_property_mut(property_name, xc)
     }
 }
 
@@ -193,234 +178,6 @@ Item properties:
     inv
 }
 
-fn extract_first_byte <'a, 'x>(
-    item: &Item<'a>,
-    xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, data_cell::Error<'x>> {
-    let mut f = item.file.borrow_mut();
-    f.seek(SeekFrom::Start(0), xc)
-    .map_err(|e| IOPartialError::from_error_and_size(e, 0))
-    .and_then(|_| f.read_u8(xc))
-    .map(|v| DataCell::U64(U64Cell {
-        n: v as u64,
-        fmt_pack: num_fmt::MiniNumFmtPack::new(
-            num_fmt::Radix::new(16).unwrap(),
-            num_fmt::RadixNotation::DefaultExplicitPrefix,
-            num_fmt::MinDigitCount::new(2).unwrap(),
-            num_fmt::PositiveSign::Hidden,
-            num_fmt::ZeroSign::Hidden)
-    }))
-    .map_err(|e|
-        if e.get_error_code() == IOErrorCode::UnexpectedEnd {
-            data_cell::Error::NotApplicable
-        } else {
-            data_cell::Error::IO(e.to_error())
-        })
-}
-
-fn first_8_bytes<'a, 'x>(
-    item: &Item<'a>,
-    xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, Error<'x>> {
-    let mut f = item.file.borrow_mut();
-    let mut buf = [0_u8; 8];
-    let n = f.seek_read(0, &mut buf, xc)?;
-    Ok(DataCell::ByteVector(
-            ByteVectorCell::from_bytes(xc.get_main_allocator(), &buf[0..n])?))
-}
-
-fn identify_top_of_file_records<'a, 'x>(
-    item: &Item<'a>,
-    xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, Error<'x>> {
-    let mut f = item.file.borrow_mut();
-    let mut ids: Vector<'x, DataCell> = Vector::new(xc.get_main_allocator());
-    let mut tof_buffer = [0_u8; 0x40];
-    let tof_len = f.seek_read(0, &mut tof_buffer, xc)?;
-    let tof = &tof_buffer[0..tof_len];
-    if tof.starts_with(b"PK") {
-        ids.push(DataCell::StaticId("zip_record"))?;
-    } else if tof.starts_with(b"#!") {
-        ids.push(DataCell::StaticId("shebang"))?;
-    } else if tof.starts_with(b"\x7FELF") {
-        ids.push(DataCell::StaticId("elf"))?;
-    } else if tof.starts_with(b"MZ") {
-        ids.push(DataCell::StaticId("dos_exe"))?;
-    } else if tof.starts_with(b"ZM") {
-        ids.push(DataCell::StaticId("dos_exe"))?;
-        ids.push(DataCell::StaticId("dos_exe_zm"))?;
-    } else if tof.starts_with(b"\x1F\x8B") {
-        ids.push(DataCell::StaticId("gzip"))?;
-    } else if tof.starts_with(b"BZ") {
-        ids.push(DataCell::StaticId("bzip2"))?;
-    } else if tof.starts_with(b"\xFD7zXZ\x00") {
-        ids.push(DataCell::StaticId("xz"))?;
-    } else if tof.starts_with(b"!<arch>\n") {
-        ids.push(DataCell::StaticId("ar"))?;
-    } else if tof.starts_with(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1") {
-        ids.push(DataCell::StaticId("ms_cfb"))?;
-    } else if tof.starts_with(b"QFI\xFB") {
-        ids.push(DataCell::StaticId("qcow"))?;
-        if tof_len >= 8 {
-            let ver: u32 = int_be_decode(&tof[4..8]).unwrap();
-            match ver {
-                1 => ids.push(DataCell::StaticId("qcow1"))?,
-                2 => ids.push(DataCell::StaticId("qcow2"))?,
-                3 => ids.push(DataCell::StaticId("qcow3"))?,
-                _ => {}
-            }
-        }
-    } else if tof.starts_with(b"7z\xBC\xAF\x27\x1C") {
-        ids.push(DataCell::StaticId("seven_zip"))?;
-    } else if tof.starts_with(b"\xFD7zXZ\x00") {
-        ids.push(DataCell::StaticId("xz"))?;
-    } else if tof.starts_with(b"\x1F\x8B") {
-        ids.push(DataCell::StaticId("gzip"))?;
-    } else if tof.starts_with(b"BZh") {
-        ids.push(DataCell::StaticId("bzip2"))?;
-    } else if tof.starts_with(b"SQLite format 3\x00") {
-        ids.push(DataCell::StaticId("sqlite3"))?;
-    } else if tof.starts_with(b"qres\x00\x00\x00\x01") {
-        ids.push(DataCell::StaticId("qt_rcc"))?;
-    }
-    Ok(DataCell::CellVector(xc.rc(RefCell::new(DCOVector(ids)))?))
-}
-
-pub const ELFCLASSNONE: u8 = 0;
-pub const ELFCLASS32: u8 = 1;
-pub const ELFCLASS64: u8 = 2;
-
-pub const ELFDATANONE: u8 = 0;
-pub const ELFDATA2LSB: u8 = 1;
-pub const ELFDATA2MSB: u8 = 2;
-
-const ELF_HEADER: RecordDesc = RecordDesc::new(
-    "elf_header",
-    &[
-        "ei_magic", "ei_class", "ei_data", "ei_version",
-        "ei_osabi", "ei_abiversion", "ei_pad",
-        "e_type", "e_machine", "e_version", "e_entry", "e_phoff", "e_shoff",
-    ]);
-
-fn extract_elf_header<'a, 'x>(
-    item: &Item<'a>,
-    xc: &mut ExecutionContext<'x>,
-) -> Result<DataCell<'x>, Error<'x>> {
-    let mut eh = Record::new(&ELF_HEADER, xc.get_main_allocator())?;
-    let ehf = eh.get_fields_mut();
-    let mut f = item.file.borrow_mut();
-    let mut magic = [0_u8; 4];
-    f.seek_read(0, &mut magic, xc)?;
-    ehf[0] = DataCell::ByteVector(xc.rc(RefCell::new(data_cell::ByteVector(xc.byte_vector_clone(&magic)?)))?);
-    Ok(DataCell::Record(xc.rc(RefCell::new(eh))?))
-    /*
-    let mut eh: Vector<'x, DataCell<'x>> = xc.vector();
-    let mut magic = [0_u8; 4];
-    item.stream.seek_read(0, &mut magic, xc)?;
-    eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &magic)?))?;
-    let ei_class = item.stream.read_u8(xc)?;
-    eh.push(match ei_class {
-        0 => DataCell::Identifier(String::map_str("ELFCLASSNONE")),
-        1 => DataCell::Identifier(String::map_str("ELFCLASS32")),
-        2 => DataCell::Identifier(String::map_str("ELFCLASS64")),
-        _ => DataCell::U64(ei_class.into()),
-    })?;
-    let ei_data = item.stream.read_u8(xc)?;
-    eh.push(match ei_data {
-        0 => DataCell::Identifier(String::map_str("ELFDATANONE")),
-        1 => DataCell::Identifier(String::map_str("ELFDATA2LSB")),
-        2 => DataCell::Identifier(String::map_str("ELFDATA2MSB")),
-        _ => DataCell::U64(ei_data.into()),
-    })?;
-    let ei_version = item.stream.read_u8(xc)?;
-    eh.push(match ei_version {
-        0 => DataCell::Identifier(String::map_str("EV_NONE")),
-        1 => DataCell::Identifier(String::map_str("EV_CURRENT")),
-        _ => DataCell::U64(ei_version.into()),
-    })?;
-    let ei_osabi = item.stream.read_u8(xc)?;
-    eh.push(match ei_osabi {
-        0 => DataCell::Identifier(String::map_str("ELFOSABI_NONE")),
-        1 => DataCell::Identifier(String::map_str("ELFOSABI_HPUX")),
-        2 => DataCell::Identifier(String::map_str("ELFOSABI_NETBSD")),
-        3 => DataCell::Identifier(String::map_str("ELFOSABI_LINUX")),
-        6 => DataCell::Identifier(String::map_str("ELFOSABI_SOLARIS")),
-        7 => DataCell::Identifier(String::map_str("ELFOSABI_AIX")),
-        8 => DataCell::Identifier(String::map_str("ELFOSABI_IRIX")),
-        9 => DataCell::Identifier(String::map_str("ELFOSABI_FREEBSD")),
-        10 => DataCell::Identifier(String::map_str("ELFOSABI_TRU64")),
-        11 => DataCell::Identifier(String::map_str("ELFOSABI_MODESTO")),
-        12 => DataCell::Identifier(String::map_str("ELFOSABI_OPENBSD")),
-        13 => DataCell::Identifier(String::map_str("ELFOSABI_OPENVMS")),
-        14 => DataCell::Identifier(String::map_str("ELFOSABI_NSK")),
-        _ => DataCell::U64(ei_osabi.into()),
-    })?;
-    eh.push(DataCell::U64(item.stream.read_u8(xc)?.into()))?;
-    let mut ei_pad = [0_u8; 7];
-    item.stream.read_exact(&mut ei_pad, xc)?;
-    eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &ei_pad)?))?;
-
-    fn read_u16le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
-        r.read_u16le(xc).map(|v| v as u64)
-    }
-    fn read_u16be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
-        r.read_u16be(xc).map(|v| v as u64)
-    }
-    fn read_u32le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
-        r.read_u32le(xc).map(|v| v as u64)
-    }
-    fn read_u32be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
-        r.read_u32be(xc).map(|v| v as u64)
-    }
-    fn read_u64le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
-        r.read_u64le(xc).map(|v| v as u64)
-    }
-    fn read_u64be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
-        r.read_u64be(xc).map(|v| v as u64)
-    }
-    let read_half: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-    let read_word: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-    let read_addr: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-    let read_off: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-    if ei_data == ELFDATA2LSB && ei_class == ELFCLASS32 {
-        read_half = &read_u16le_as_u64;
-        read_word = &read_u32le_as_u64;
-        read_addr = &read_u32le_as_u64;
-        read_off = &read_u32le_as_u64;
-    } else if ei_data == ELFDATA2MSB && ei_class == ELFCLASS32 {
-        read_half = &read_u16be_as_u64;
-        read_word = &read_u32be_as_u64;
-        read_addr = &read_u32be_as_u64;
-        read_off = &read_u32be_as_u64;
-    } else if ei_data == ELFDATA2LSB && ei_class == ELFCLASS64 {
-        read_half = &read_u16le_as_u64;
-        read_word = &read_u32le_as_u64;
-        read_addr = &read_u64le_as_u64;
-        read_off = &read_u64le_as_u64;
-    } else if ei_data == ELFDATA2MSB && ei_class == ELFCLASS64 {
-        read_half = &read_u16be_as_u64;
-        read_word = &read_u32be_as_u64;
-        read_addr = &read_u64be_as_u64;
-        read_off = &read_u64be_as_u64;
-    } else {
-        return Ok(DataCell::Record(eh, ELF_HEADER_FIELDS));
-    }
-    let e_type = read_half(item.stream, xc)?;
-    let e_machine = read_half(item.stream, xc)?;
-    let e_version = read_word(item.stream, xc)?;
-    let e_entry = read_addr(item.stream, xc)?;
-    let e_phoff = read_off(item.stream, xc)?;
-    let e_shoff = read_off(item.stream, xc)?;
-    eh.push(DataCell::U64(e_type))?;
-    eh.push(DataCell::U64(e_machine))?;
-    eh.push(DataCell::U64(e_version))?;
-    eh.push(DataCell::U64(e_entry))?;
-    eh.push(DataCell::U64(e_phoff))?;
-    eh.push(DataCell::U64(e_shoff))?;
-
-*/
-}
-
 fn output_expr_value<'x>(
     item_name: &str,
     expr: &Expr<'x>,
@@ -457,7 +214,14 @@ fn process_item<'x>(
 
     let item = Item {
         name: item_name,
-        file: RefCell::new(f),
+        file: match xc.rc(RefCell::new(f)) {
+            Ok(f) => f,
+            Err((e, _f)) => {
+                log_error!(xc, "error:{:?}:{:?}", item_name, e);
+                status.attributes_failed_to_compute += eval_expr_list.len();
+                return status;
+            }
+        }
     };
     let root = match xc.rc(item) {
         Ok(b) => make_data_cell_ops_rc(b),
