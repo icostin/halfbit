@@ -33,6 +33,18 @@ pub enum Error<'e> {
     CellUnavailable, // borrow error on a RefCell while computing something
 }
 
+impl fmt::Display for Error<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::NotApplicable => "not applicable".fmt(f),
+            Error::CellUnavailable => "data unavailable due to internal state".fmt(f),
+            Error::Alloc(v) => write!(f, "allocation error ({})", v),
+            Error::IO(v) => write!(f, "I/O error ({})", v),
+            Error::Output(v) => write!(f, "reporting output error ({})", v),
+        }
+    }
+}
+
 impl From<fmt::Error> for Error<'_> {
     fn from (_: fmt::Error) -> Self {
         Error::Output(

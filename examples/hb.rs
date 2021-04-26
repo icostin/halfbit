@@ -199,14 +199,14 @@ fn process_item<'x>(
 ) -> ProcessingStatus {
     let mut status = ProcessingStatus::new();
 
-    log_info!(xc, "processing {:?}: evaluating {:?}", item_name, eval_expr_list);
+    log_info!(xc, "info:{:?}: evaluating {:?}", item_name, eval_expr_list);
     let f = match std::fs::File::open(item_name) {
         Ok(f) => {
             status.accessible_items = 1;
             f
         },
         Err(e) => {
-            log_error!(xc, "error opening file {:?}: {}", item_name, e);
+            log_error!(xc, "error:{:?}: open file failed: {}", item_name, e);
             return status;
         }
     };
@@ -216,7 +216,7 @@ fn process_item<'x>(
         file: match xc.rc(RefCell::new(f)) {
             Ok(f) => f,
             Err((e, _f)) => {
-                log_error!(xc, "error:{:?}:{}", item_name, e);
+                log_error!(xc, "error:{:?}: {}", item_name, e);
                 status.attributes_failed_to_compute += eval_expr_list.len();
                 return status;
             }
@@ -225,7 +225,7 @@ fn process_item<'x>(
     let root = match xc.rc(item) {
         Ok(b) => make_data_cell_ops_rc(b),
         Err((e, item)) => {
-            log_error!(xc, "error:{:?}:{}", item.name, e);
+            log_error!(xc, "error:{:?}: {}", item.name, e);
             status.attributes_failed_to_compute += eval_expr_list.len();
             return status;
         }
@@ -233,24 +233,24 @@ fn process_item<'x>(
     let mut root = DataCell::Dyn(root);
 
     for expr in eval_expr_list {
-        log_info!(xc, "computing expression {} for item {:?}", expr, item_name);
+        log_info!(xc, "info:{:?}: computing expression {}", item_name, expr);
         if expr.eval_on_cell(&mut root, xc)
             .and_then(|v| output_expr_value(item_name, expr, &v, out, xc))
             .map(|_| { status.attributes_computed_ok += 1; })
             .or_else(|e| match e {
                 Error::NotApplicable => {
                     status.attributes_not_applicable += 1;
-                    log_warn!(xc, "warning:{:?}:{}:{:?}", item_name, expr, e);
+                    log_warn!(xc, "warning:{:?}:{}: {}", item_name, expr, e);
                     Ok(())
                 },
                 Error::Output(oe) => {
                     status.output_error = true;
-                    log_crit!(xc, "fatal:{:?}:{:?}:{}", item_name, expr, oe);
+                    log_crit!(xc, "fatal:{:?}:{}: {}", item_name, expr, oe);
                     Err(())
                 },
                 _ => {
                     status.attributes_failed_to_compute += 1;
-                    log_error!(xc, "error:{:?}:{:?}:{:?}", item_name, expr, e);
+                    log_error!(xc, "error:{:?}:{}: {}", item_name, expr, e);
                     Ok(())
                 }
             }).is_err() {
