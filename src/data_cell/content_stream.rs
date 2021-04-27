@@ -2,7 +2,6 @@ use core::cell::RefCell;
 
 use crate::ExecutionContext;
 use crate::conv::int_be_decode;
-use crate::data_cell::ByteVector;
 use crate::data_cell::DCOVector;
 use crate::data_cell::DataCell;
 use crate::data_cell::DataCellOpsMut;
@@ -138,7 +137,8 @@ impl<'a, T: ?Sized + RandomAccessRead> ContentStream<'a, T> {
         let ehf = eh.get_fields_mut();
         let mut magic = [0_u8; 4];
         self.stream.seek_read(0, &mut magic, xc)?;
-        ehf[0] = DataCell::ByteVector(xc.rc(RefCell::new(ByteVector(xc.byte_vector_clone(&magic)?)))?);
+        ehf[0] = DataCell::from_byte_slice(xc.get_main_allocator(), &magic)?;
+        //ehf[0] = DataCell::ByteVector(xc.rc(RefCell::new(ByteVector(xc.byte_vector_clone(&magic)?)))?);
         Ok(DataCell::Record(xc.rc(RefCell::new(eh))?))
         /*
         let mut eh: Vector<'x, DataCell<'x>> = xc.vector();

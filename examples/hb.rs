@@ -44,7 +44,8 @@ struct ExitCode(u8);
 #[derive(Debug)]
 struct Invocation {
     verbose: bool,
-    items: Vec<StdString>,
+    item_paths: Vec<StdString>,
+    item_raw_strings: Vec<StdString>,
     expressions: Vec<StdString>,
 }
 
@@ -134,7 +135,7 @@ fn process_args(args: Vec<StdString>) -> Invocation {
                 .long("verbose")
                 .help("prints what it does verbosely"))
         .arg(clap::Arg::with_name("items")
-                .help("item(s) to process (file paths for now)")
+                .help("item(s) to process (as file paths by default)")
                 .multiple(true))
         .arg(clap::Arg::with_name("eval")
                 .short("e")
@@ -143,6 +144,16 @@ fn process_args(args: Vec<StdString>) -> Invocation {
                 .takes_value(true)
                 .multiple(true)
                 .number_of_values(1))
+        .arg(clap::Arg::with_name("raw_string")
+                .short("r")
+                .long("raw-string")
+                .help("treat following arguments as file content for items")
+                .takes_value(true)
+                .multiple(true))
+        .arg(clap::Arg::with_name("file_path")
+                .short("p")
+                .long("file-path")
+                .help("treat following arguments as file paths for items"))
         .after_help("
 Item properties:
     first_byte          first content byte
@@ -155,12 +166,17 @@ Item properties:
 
     let inv = Invocation {
         verbose: m.is_present("verbose"),
-        items:
+        item_paths:
             if let Some(values) = m.values_of("items") {
                 values.map(|x| StdString::from(x)).collect()
             } else {
                 Vec::new()
             },
+        item_raw_strings:
+            m.values_of("raw_strings")
+                .map_or_else(
+                    || Vec::new(),
+                    |v| v.map(|x| StdString::from(x)).collect()),
         expressions:
             if let Some(values) = m.values_of("eval") {
                 values.map(|x| StdString::from(x)).collect()
@@ -295,7 +311,7 @@ fn run<'x>(
     }
     log_debug!(xc, "expressions: {:?}", expressions);
 
-    for item in &invocation.items {
+    for item in &invocation.item_paths {
         summary.add(&process_item(item, expressions.as_slice(), out, xc));
         if summary.output_error {
             break;
