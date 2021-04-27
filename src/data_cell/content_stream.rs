@@ -3,7 +3,6 @@ use core::cell::RefCell;
 use crate::ExecutionContext;
 use crate::conv::int_be_decode;
 use crate::data_cell::ByteVector;
-use crate::data_cell::ByteVectorCell;
 use crate::data_cell::DCOVector;
 use crate::data_cell::DataCell;
 use crate::data_cell::DataCellOpsMut;
@@ -60,8 +59,7 @@ impl<'a, T: ?Sized + RandomAccessRead> ContentStream<'a, T> {
     ) -> Result<DataCell<'x>, Error<'x>> {
         let mut buf = [0_u8; 8];
         let n = self.stream.seek_read(0, &mut buf, xc)?;
-        Ok(DataCell::ByteVector(
-                ByteVectorCell::from_bytes(xc.get_main_allocator(), &buf[0..n])?))
+        Ok(DataCell::from_byte_slice(xc.get_main_allocator(), &buf[0..n])?)
     }
 
     pub fn identify_top_of_file_records<'x>(

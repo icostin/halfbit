@@ -233,6 +233,15 @@ impl DataCellOps for U64Cell {
 #[derive(Debug)]
 pub struct ByteVector<'a>(pub Vector<'a, u8>);
 
+impl<'a> ByteVector<'a> {
+    pub fn from_byte_slice(
+        allocator: AllocatorRef<'a>,
+        data: &[u8]
+    ) -> Result<Self, AllocError> {
+        Vector::from_slice(allocator, data).map(|bv| ByteVector(bv))
+    }
+
+}
 impl<'a> DataCellOpsMut for ByteVector<'a> {
 
     fn get_property_mut<'x>(
@@ -258,20 +267,6 @@ impl<'a> DataCellOpsMut for ByteVector<'a> {
         output_byte_slice_as_human_readable_text(self.0.as_slice(), out, xc)?;
         write!(out, "\"")?;
         Ok(())
-    }
-
-}
-
-/* ByteVectorCell ***********************************************************/
-pub type ByteVectorCell<'a> = Rc<'a, RefCell<ByteVector<'a>>>;
-impl<'a> ByteVectorCell<'a> {
-
-    pub fn from_bytes(
-        allocator: AllocatorRef<'a>,
-        data: &[u8]
-    ) -> Result<Self, AllocError> {
-        let bv = ByteVector(Vector::from_slice(allocator, data)?);
-        Ok(Rc::new(allocator, RefCell::new(bv))?)
     }
 
 }
@@ -398,7 +393,7 @@ impl<'a> DataCellOpsMut for Record<'a> {
 pub enum DataCell<'d> {
     Nothing,
     U64(U64Cell),
-    ByteVector(ByteVectorCell<'d>),
+    ByteVector(Rc<'d, RefCell<ByteVector<'d>>>),
     StaticId(&'d str),
     Dyn(Rc<'d, dyn DataCellOps + 'd>),
     CellVector(Rc<'d, RefCell<DCOVector<'d, DataCell<'d>>>>),
@@ -428,6 +423,13 @@ impl<'d> DataCell<'d> {
 
     pub fn from_static_id(s: &'d str) -> Self {
         DataCell::StaticId(s)
+    }
+
+    pub fn from_byte_slice(
+        allocator: AllocatorRef<'d>,
+        data: &[u8],
+    ) -> Result<Self, AllocError> {
+        Ok(DataCell::ByteVector(Rc::new(allocator, RefCell::new(ByteVector::from_byte_slice(allocator, data)?))?))
     }
 }
 
