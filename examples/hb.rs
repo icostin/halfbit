@@ -7,6 +7,7 @@ use core::fmt::Write as FmtWrite;
 
 use std::io::stderr;
 use std::io::stdout;
+use std::io::Error as StdIOError;
 use std::string::String as StdString;
 
 use halfbit::ExecutionContext;
@@ -32,6 +33,7 @@ use halfbit::log_error;
 use halfbit::log_info;
 use halfbit::log_warn;
 use halfbit::mm::Allocator;
+use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Rc;
 use halfbit::mm::Vector;
@@ -52,6 +54,46 @@ struct Invocation {
 struct Item<'a> {
     name: &'a str,
     file: Rc<'a, RefCell<std::fs::File>>,
+}
+
+enum ItemError {
+    Alloc(AllocError),
+    Open(StdIOError),
+}
+impl From<StdIOError> for ItemError {
+    fn from(e: StdIOError) -> Self {
+        ItemError::Open(e)
+    }
+}
+impl From<AllocError> for ItemError {
+    fn from(e: AllocError) -> Self {
+        ItemError::Alloc(e)
+    }
+}
+impl<T> From<(AllocError, T)> for ItemError {
+    fn from(e: (AllocError, T)) -> Self {
+        ItemError::Alloc(e.0)
+    }
+}
+impl From<ItemError> for ProcessingStatus {
+    fn from(_e: ItemError) -> Self {
+        ProcessingStatus {
+            accessible_items: 0,
+            inaccessible_items: 1,
+            attributes_computed_ok: 0,
+            attributes_not_applicable: 0,
+            attributes_failed_to_compute: 0,
+            output_error: false,
+        }
+    }
+}
+impl fmt::Display for ItemError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ItemError::Alloc(e) => write!(f, "alloc failed: {}", e),
+            ItemError::Open(e) => write!(f, "open failed: {}", e),
+        }
+    }
 }
 
 dyn_rc!(make_data_cell_ops_rc, DataCellOps);
@@ -78,9 +120,39 @@ impl ExitCode {
     }
 }
 
+impl<'a> Item<'a> {
+
+    pub fn from_file_path(
+        path: &'a str,
+        xc: &mut ExecutionContext<'a>
+    ) -> Result<Self, ItemError> {
+        Ok(Item {
+            name: path,
+            file: xc.rc(RefCell::new(std::fs::File::open(path)?))?
+        })
+    }
+
+    pub fn data_cell_from_file_path(
+        path: &'a str,
+        xc: &mut ExecutionContext<'a>
+    ) -> Result<DataCell<'a>, ItemError> {
+        let item = Item::from_file_path(path, xc)?;
+        let rc_item = xc.rc(item)?;
+        Ok(DataCell::Dyn(make_data_cell_ops_rc(rc_item)))
+    }
+
+    // pub fn from_raw(
+    //     name: &'a str,
+    //     data: &'a[u8],
+    //     xc: &mut ExecutionContext<'a>
+    // ) -> Result<Self, ItemError> {
+    //     panic!();
+    // }
+}
+
 impl<'a> fmt::Debug for Item<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Item({:?})", self.name)
+        write!(f, "File-Item({:?})", self.name)
     }
 }
 
@@ -207,50 +279,36 @@ fn output_expr_value<'x>(
         .and_then(|_| out.write_all(b"\n", xc).map_err(|e| Error::Output(e.to_error())))
 }
 
-fn process_item<'x>(
+
+fn process_file_path<'x>(
     item_name: &'x str,
     eval_expr_list: &[Expr<'x>],
     out: &mut (dyn Write + '_),
     xc: &mut ExecutionContext<'x>,
 ) -> ProcessingStatus {
-    let mut status = ProcessingStatus::new();
-
-    log_info!(xc, "info:{:?}: evaluating {:?}", item_name, eval_expr_list);
-    let f = match std::fs::File::open(item_name) {
-        Ok(f) => {
-            status.accessible_items = 1;
-            f
+    match Item::data_cell_from_file_path(item_name, xc) {
+        Ok(mut root) => {
+            process_expression_list(item_name, &mut root, eval_expr_list, out, xc)
         },
         Err(e) => {
-            log_error!(xc, "error:{:?}: open file failed: {}", item_name, e);
-            return status;
+            log_error!(xc, "error:{:?}: {}", item_name, e);
+            e.into()
         }
-    };
+    }
+}
 
-    let item = Item {
-        name: item_name,
-        file: match xc.rc(RefCell::new(f)) {
-            Ok(f) => f,
-            Err((e, _f)) => {
-                log_error!(xc, "error:{:?}: {}", item_name, e);
-                status.attributes_failed_to_compute += eval_expr_list.len();
-                return status;
-            }
-        }
-    };
-    let root = match xc.rc(item) {
-        Ok(b) => make_data_cell_ops_rc(b),
-        Err((e, item)) => {
-            log_error!(xc, "error:{:?}: {}", item.name, e);
-            status.attributes_failed_to_compute += eval_expr_list.len();
-            return status;
-        }
-    };
-    let mut root = DataCell::Dyn(root);
-
+fn process_expression_list<'x>(
+    item_name: &'x str,
+    root: &mut DataCell<'x>,
+    eval_expr_list: &[Expr<'x>],
+    out: &mut (dyn Write + '_),
+    xc: &mut ExecutionContext<'x>,
+) -> ProcessingStatus {
+    log_info!(xc, "info:{:?}: evaluating {:?}", item_name, eval_expr_list);
+    let mut status = ProcessingStatus::new();
     for expr in eval_expr_list {
         log_info!(xc, "info:{:?}: computing expression {}", item_name, expr);
-        if expr.eval_on_cell(&mut root, xc)
+        if expr.eval_on_cell(root, xc)
             .and_then(|v| output_expr_value(item_name, expr, &v, out, xc))
             .map(|_| { status.attributes_computed_ok += 1; })
             .or_else(|e| match e {
@@ -312,7 +370,7 @@ fn run<'x>(
     log_debug!(xc, "expressions: {:?}", expressions);
 
     for item in &invocation.item_paths {
-        summary.add(&process_item(item, expressions.as_slice(), out, xc));
+        summary.add(&process_file_path(item, expressions.as_slice(), out, xc));
         if summary.output_error {
             break;
         }
