@@ -9,6 +9,7 @@ use crate::data_cell::Error;
 use crate::data_cell::Record;
 use crate::data_cell::RecordDesc;
 use crate::data_cell::U64Cell;
+use crate::data_cell::output_byte_slice_as_human_readable_text;
 use crate::io::ErrorCode as IOErrorCode;
 use crate::io::IOPartialError;
 use crate::io::stream::RandomAccessRead;
@@ -268,10 +269,17 @@ impl<'a, T: ?Sized + RandomAccessRead> DataCellOpsMut for ContentStream<'a, T> {
 
     fn output_as_human_readable_mut<'w, 'x>(
         &mut self,
-        _out: &mut (dyn Write + 'w),
-        _xc: &mut ExecutionContext<'x>,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
     ) -> Result<(), Error<'x>> {
-        Err(Error::NotApplicable)
+        self.stream.seek(SeekFrom::Start(0), xc)?;
+        let mut buffer = [0_u8; 1024];
+        loop {
+            let n = self.stream.read(&mut buffer, xc)?;
+            if n == 0 { break; }
+            output_byte_slice_as_human_readable_text(&buffer[0..n], out, xc)?;
+        }
+        Ok(())
     }
 
 }

@@ -261,7 +261,19 @@ impl<'a, T> Drop for RcWeak<'a, T> where T: ?Sized {
 macro_rules! dyn_rc {
     ( $func_name:ident, $trait:path ) => {
         fn $func_name<'a, T: $trait>(rc: $crate::mm::Rc<'a, T>) -> $crate::mm::Rc<'a, dyn $trait + 'a> {
-            unsafe { 
+            unsafe {
+                let data = $crate::mm::Rc::to_payload(rc);
+                $crate::mm::Rc::from_payload(data)
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! convert_rc {
+    ( $func_name:ident, $from:ty, $to:ty ) => {
+        fn $func_name<'a>(rc: $crate::mm::Rc<'a, $from>) -> $crate::mm::Rc<'a, $to> {
+            unsafe {
                 let data = $crate::mm::Rc::to_payload(rc);
                 $crate::mm::Rc::from_payload(data)
             }

@@ -1,8 +1,6 @@
 extern crate clap;
 
 use core::convert::AsRef;
-use core::borrow::Borrow;
-use core::borrow::BorrowMut;
 use core::cell::RefCell;
 use core::fmt;
 use core::fmt::Write as FmtWrite;
@@ -11,6 +9,7 @@ use std::io::stderr;
 use std::io::stdout;
 use std::io::Error as StdIOError;
 use std::string::String as StdString;
+use std::fs::File as StdFile;
 
 use halfbit::ExecutionContext;
 use halfbit::LogLevel;
@@ -26,9 +25,12 @@ use halfbit::data_cell::expr::Parser;
 use halfbit::data_cell::expr::Source;
 use halfbit::data_cell;
 use halfbit::dyn_rc;
+use halfbit::convert_rc;
 use halfbit::io::ErrorCode as IOErrorCode;
 use halfbit::io::IOError;
 use halfbit::io::stream::Write;
+use halfbit::io::stream::RandomAccessRead;
+use halfbit::io::stream::BufferAsROStream;
 use halfbit::log_crit;
 use halfbit::log_debug;
 use halfbit::log_error;
@@ -45,6 +47,8 @@ use halfbit::mm::String;
 const HB_VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 dyn_rc!(make_data_cell_ops_rc, DataCellOps);
+convert_rc!(std_file_rc_as_reader, RefCell<StdFile>, RefCell<dyn RandomAccessRead + 'a>);
+convert_rc!(buf_ro_stream_rc_as_reader, RefCell<BufferAsROStream<'a>>, RefCell<dyn RandomAccessRead + 'a>);
 
 /* ExitCode *****************************************************************/
 #[derive(Copy, Clone, Debug)]
@@ -103,19 +107,32 @@ impl fmt::Display for ItemError {
 /* ItemData *****************************************************************/
 struct ItemData<'a> {
     name: String<'a>,
-    file: Rc<'a, RefCell<std::fs::File>>,
+    file: Rc<'a, RefCell<dyn RandomAccessRead + 'a>>,
 }
 impl<'a> ItemData<'a> {
 
-    pub fn from_file_path(
-        path: &'a str,
+    fn from_file_path(
+        path: &str,
         xc: &mut ExecutionContext<'a>
     ) -> Result<Self, ItemError> {
         Ok(ItemData {
             name: xc.string_clone(path)?,
-            file: xc.rc(RefCell::new(std::fs::File::open(path)?))?
+            file: std_file_rc_as_reader(xc.rc(RefCell::new(std::fs::File::open(path)?))?)
         })
     }
+
+    fn from_raw_string(
+        name: &str,
+        data: &'a [u8],
+        xc: &mut ExecutionContext<'a>
+    ) -> Result<Self,ItemError> {
+        let file = BufferAsROStream::new(data);
+        let file = xc.rc(RefCell::new(file))?;
+        let file = buf_ro_stream_rc_as_reader(file);
+        let name = xc.string_clone(name)?;
+        Ok(ItemData { name, file })
+    }
+
 
 }
 
@@ -132,16 +149,27 @@ impl<'a> fmt::Display for ItemData<'a> {
 }
 
 impl<'a> DataCellOps for ItemData<'a> {
+
     fn get_property<'x>(
         &self,
         property_name: &str,
         xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
         let mut x = self.file.as_ref().borrow_mut();
-        let mut f: &mut std::fs::File = x.borrow_mut();
-        let mut cs = ContentStream::new(&mut f);
+        let mut cs = ContentStream::new(&mut *x);
         cs.get_property_mut(property_name, xc)
     }
+
+    fn output_as_human_readable<'w, 'x>(
+        &self,
+        out: &mut (dyn Write + 'w),
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<(), Error<'x>> {
+        let mut x = self.file.as_ref().borrow_mut();
+        let mut cs = ContentStream::new(&mut *x);
+        cs.output_as_human_readable_mut(out, xc)
+    }
+
 }
 
 /* Item *********************************************************************/
@@ -152,20 +180,33 @@ impl<'a> Item<'a> {
     fn from_data(item_data: ItemData<'a>, allocator: AllocatorRef<'a>) -> Result<Self, AllocError> {
         Rc::new(allocator, item_data).map(|rc| Item(rc)).map_err(|e| e.0)
     }
+
     fn from_file_path(
-        path: &'a str,
+        path: &str,
         xc: &mut ExecutionContext<'a>
     ) -> Result<Self, ItemError> {
-        Ok(Item::from_data(ItemData::from_file_path(path, xc)?, xc.get_main_allocator())?)
+        Ok(Item::from_data(
+                ItemData::from_file_path(path, xc)?,
+                xc.get_main_allocator())?)
+    }
+
+    fn from_raw_string(
+        name: &str,
+        data: &'a [u8],
+        xc: &mut ExecutionContext<'a>
+    ) -> Result<Self, ItemError> {
+        Ok(Item::from_data(
+                ItemData::from_raw_string(name, data, xc)?,
+                xc.get_main_allocator())?)
     }
 
     fn as_data_cell(&self) -> DataCell<'a> {
         DataCell::Dyn(make_data_cell_ops_rc(self.0.clone()))
     }
 
-    fn get_name(&self) -> &str {
-        self.0.as_ref().borrow().name.as_str()
-    }
+    // fn get_name(&self) -> &str {
+    //     self.0.as_ref().borrow().name.as_str()
+    // }
 }
 
 /* ProcessingStatus *********************************************************/
@@ -261,7 +302,7 @@ Item properties:
                 Vec::new()
             },
         item_raw_strings:
-            m.values_of("raw_strings")
+            m.values_of("raw_string")
                 .map_or_else(
                     || Vec::new(),
                     |v| v.map(|x| StdString::from(x)).collect()),
@@ -333,14 +374,30 @@ fn process_expression_list<'n, 'x>(
 }
 
 fn process_item<'x>(
+    item_name: &str,
     item: &Item<'x>,
     eval_expr_list: &[Expr<'x>],
     out: &mut (dyn Write + '_),
     xc: &mut ExecutionContext<'x>,
 ) -> ProcessingStatus {
     let mut root = item.as_data_cell();
-    let name = item.get_name();
-    process_expression_list(name, &mut root, eval_expr_list, out, xc)
+    process_expression_list(item_name, &mut root, eval_expr_list, out, xc)
+}
+
+fn process_item_result<'x>(
+    item_name: &str,
+    item_result: Result<Item<'x>, ItemError>,
+    eval_expr_list: &[Expr<'x>],
+    out: &mut (dyn Write + '_),
+    xc: &mut ExecutionContext<'x>,
+) -> ProcessingStatus {
+    match item_result {
+        Ok(item) => process_item(item_name, &item, eval_expr_list, out, xc),
+        Err(e) => {
+            log_error!(xc, "error:{}: {}", item_name, e);
+            e.into()
+        }
+    }
 }
 
 fn parse_eval_expr_list<'a>(
@@ -378,17 +435,24 @@ fn run<'x>(
     }
     log_debug!(xc, "expressions: {:?}", expressions);
 
+    let expr_list = expressions.as_slice();
+
     for item_path in &invocation.item_paths {
         let item_result = Item::from_file_path(item_path, xc);
-        let stats = match item_result {
-            Ok(item) => process_item(&item, expressions.as_slice(), out, xc),
-            Err(e) => {
-                log_error!(xc, "error:{}: {}", item_path, e);
-                e.into()
-            }
-        };
-        summary.add(&stats);
+        summary.add(&process_item_result(item_path, item_result, expr_list, out, xc));
         if summary.output_error { break; }
+    }
+    for (index, data) in invocation.item_raw_strings.iter().enumerate() {
+        let index = index + 1;
+        let mut name = xc.string();
+        let item_result = write!(name, "<raw-arg-{}>", index)
+            .map_err(|_| {
+                name = String::map_str("<raw-arg>");
+                ItemError::Alloc(AllocError::OperationFailed)
+            })
+            .and_then(|_| Item::from_raw_string(name.as_str(), data.as_bytes(), xc));
+        summary.add(&process_item_result(name.as_str(), item_result, expr_list, out, xc));
+
     }
     if invocation.verbose {
         log_info!(xc, "accessible items: {}", summary.accessible_items);

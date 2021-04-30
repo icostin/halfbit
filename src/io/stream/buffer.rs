@@ -36,6 +36,7 @@ impl Seek for BufferAsOnePassROStream<'_> {}
 impl Write for BufferAsOnePassROStream<'_> {}
 impl Truncate for BufferAsOnePassROStream<'_> {}
 
+#[derive(Debug)]
 pub struct BufferAsROStream<'a> {
     buffer: &'a [u8],
     position: u64,
