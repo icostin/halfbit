@@ -238,7 +238,7 @@ impl<'a> ByteVector<'a> {
         allocator: AllocatorRef<'a>,
         data: &[u8]
     ) -> Result<Self, AllocError> {
-        Vector::from_slice(allocator, data).map(|bv| ByteVector(bv))
+        Vector::from_slice(data, allocator).map(|bv| ByteVector(bv))
     }
 
 }

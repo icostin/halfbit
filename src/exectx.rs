@@ -116,11 +116,15 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn byte_vector_clone(&self, data: &[u8]) -> Result<Vector<'a, u8>, AllocError> {
-        Vector::from_slice(self.get_main_allocator(), data)
+        Vector::from_slice(data, self.get_main_allocator())
     }
 
     pub fn string(&self) -> String<'a> {
         String::new(self.get_main_allocator())
+    }
+
+    pub fn string_clone(&self, data: &str) -> Result<String<'a>, AllocError> {
+        String::from_str(data, self.get_main_allocator())
     }
 
     pub fn rc<T: Sized>(

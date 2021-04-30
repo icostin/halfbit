@@ -25,6 +25,12 @@ impl<'a> String<'a> {
             data: Vector::map_slice(s.as_bytes())
         }
     }
+    pub fn from_str(
+        data: &str,
+        allocator: AllocatorRef<'a>
+    ) -> Result<String<'a>, AllocError> {
+        Vector::from_slice(data.as_bytes(), allocator).map(|v| String { data: v })
+    }
     pub fn as_str(&self) -> &str {
         unsafe { core::str::from_utf8_unchecked(self.data.as_slice()) }
     }

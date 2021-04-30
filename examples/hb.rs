@@ -1,5 +1,7 @@
 extern crate clap;
 
+use core::convert::AsRef;
+use core::borrow::Borrow;
 use core::borrow::BorrowMut;
 use core::cell::RefCell;
 use core::fmt;
@@ -33,16 +35,22 @@ use halfbit::log_error;
 use halfbit::log_info;
 use halfbit::log_warn;
 use halfbit::mm::Allocator;
+use halfbit::mm::AllocatorRef;
 use halfbit::mm::AllocError;
 use halfbit::mm::Malloc;
 use halfbit::mm::Rc;
 use halfbit::mm::Vector;
+use halfbit::mm::String;
 
 const HB_VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
+dyn_rc!(make_data_cell_ops_rc, DataCellOps);
+
+/* ExitCode *****************************************************************/
 #[derive(Copy, Clone, Debug)]
 struct ExitCode(u8);
 
+/* Invocation ***************************************************************/
 #[derive(Debug)]
 struct Invocation {
     verbose: bool,
@@ -51,11 +59,7 @@ struct Invocation {
     expressions: Vec<StdString>,
 }
 
-struct Item<'a> {
-    name: &'a str,
-    file: Rc<'a, RefCell<std::fs::File>>,
-}
-
+/* ItemError ****************************************************************/
 enum ItemError {
     Alloc(AllocError),
     Open(StdIOError),
@@ -96,8 +100,75 @@ impl fmt::Display for ItemError {
     }
 }
 
-dyn_rc!(make_data_cell_ops_rc, DataCellOps);
+/* ItemData *****************************************************************/
+struct ItemData<'a> {
+    name: String<'a>,
+    file: Rc<'a, RefCell<std::fs::File>>,
+}
+impl<'a> ItemData<'a> {
 
+    pub fn from_file_path(
+        path: &'a str,
+        xc: &mut ExecutionContext<'a>
+    ) -> Result<Self, ItemError> {
+        Ok(ItemData {
+            name: xc.string_clone(path)?,
+            file: xc.rc(RefCell::new(std::fs::File::open(path)?))?
+        })
+    }
+
+}
+
+impl<'a> fmt::Debug for ItemData<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Item({})", self.name.as_str())
+    }
+}
+
+impl<'a> fmt::Display for ItemData<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "file({:?})", self.name)
+    }
+}
+
+impl<'a> DataCellOps for ItemData<'a> {
+    fn get_property<'x>(
+        &self,
+        property_name: &str,
+        xc: &mut ExecutionContext<'x>,
+    ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
+        let mut x = self.file.as_ref().borrow_mut();
+        let mut f: &mut std::fs::File = x.borrow_mut();
+        let mut cs = ContentStream::new(&mut f);
+        cs.get_property_mut(property_name, xc)
+    }
+}
+
+/* Item *********************************************************************/
+struct Item<'a>(Rc<'a, ItemData<'a>>);
+
+impl<'a> Item<'a> {
+
+    fn from_data(item_data: ItemData<'a>, allocator: AllocatorRef<'a>) -> Result<Self, AllocError> {
+        Rc::new(allocator, item_data).map(|rc| Item(rc)).map_err(|e| e.0)
+    }
+    fn from_file_path(
+        path: &'a str,
+        xc: &mut ExecutionContext<'a>
+    ) -> Result<Self, ItemError> {
+        Ok(Item::from_data(ItemData::from_file_path(path, xc)?, xc.get_main_allocator())?)
+    }
+
+    fn as_data_cell(&self) -> DataCell<'a> {
+        DataCell::Dyn(make_data_cell_ops_rc(self.0.clone()))
+    }
+
+    fn get_name(&self) -> &str {
+        self.0.as_ref().borrow().name.as_str()
+    }
+}
+
+/* ProcessingStatus *********************************************************/
 struct ProcessingStatus {
     accessible_items: usize,
     inaccessible_items: usize,
@@ -120,42 +191,6 @@ impl ExitCode {
     }
 }
 
-impl<'a> Item<'a> {
-
-    pub fn from_file_path(
-        path: &'a str,
-        xc: &mut ExecutionContext<'a>
-    ) -> Result<Self, ItemError> {
-        Ok(Item {
-            name: path,
-            file: xc.rc(RefCell::new(std::fs::File::open(path)?))?
-        })
-    }
-
-    pub fn data_cell_from_file_path(
-        path: &'a str,
-        xc: &mut ExecutionContext<'a>
-    ) -> Result<DataCell<'a>, ItemError> {
-        let item = Item::from_file_path(path, xc)?;
-        let rc_item = xc.rc(item)?;
-        Ok(DataCell::Dyn(make_data_cell_ops_rc(rc_item)))
-    }
-
-    // pub fn from_raw(
-    //     name: &'a str,
-    //     data: &'a[u8],
-    //     xc: &mut ExecutionContext<'a>
-    // ) -> Result<Self, ItemError> {
-    //     panic!();
-    // }
-}
-
-impl<'a> fmt::Debug for Item<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "File-Item({:?})", self.name)
-    }
-}
-
 impl ProcessingStatus {
     pub fn new () -> Self {
         ProcessingStatus {
@@ -174,25 +209,6 @@ impl ProcessingStatus {
         self.attributes_not_applicable += other.attributes_not_applicable;
         self.attributes_failed_to_compute += other.attributes_failed_to_compute;
         self.output_error |= other.output_error;
-    }
-}
-
-impl<'a> fmt::Display for Item<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "file({:?})", self.name)
-    }
-}
-
-impl<'a> DataCellOps for Item<'a> {
-    fn get_property<'x>(
-        &self,
-        property_name: &str,
-        xc: &mut ExecutionContext<'x>,
-    ) -> Result<DataCell<'x>, data_cell::Error<'x>> {
-        let mut x = self.file.as_ref().borrow_mut();
-        let mut f: &mut std::fs::File = x.borrow_mut();
-        let mut cs = ContentStream::new(&mut f);
-        cs.get_property_mut(property_name, xc)
     }
 }
 
@@ -279,26 +295,8 @@ fn output_expr_value<'x>(
         .and_then(|_| out.write_all(b"\n", xc).map_err(|e| Error::Output(e.to_error())))
 }
 
-
-fn process_file_path<'x>(
-    item_name: &'x str,
-    eval_expr_list: &[Expr<'x>],
-    out: &mut (dyn Write + '_),
-    xc: &mut ExecutionContext<'x>,
-) -> ProcessingStatus {
-    match Item::data_cell_from_file_path(item_name, xc) {
-        Ok(mut root) => {
-            process_expression_list(item_name, &mut root, eval_expr_list, out, xc)
-        },
-        Err(e) => {
-            log_error!(xc, "error:{:?}: {}", item_name, e);
-            e.into()
-        }
-    }
-}
-
-fn process_expression_list<'x>(
-    item_name: &'x str,
+fn process_expression_list<'n, 'x>(
+    item_name: &'n str,
     root: &mut DataCell<'x>,
     eval_expr_list: &[Expr<'x>],
     out: &mut (dyn Write + '_),
@@ -332,6 +330,17 @@ fn process_expression_list<'x>(
         }
     }
     status
+}
+
+fn process_item<'x>(
+    item: &Item<'x>,
+    eval_expr_list: &[Expr<'x>],
+    out: &mut (dyn Write + '_),
+    xc: &mut ExecutionContext<'x>,
+) -> ProcessingStatus {
+    let mut root = item.as_data_cell();
+    let name = item.get_name();
+    process_expression_list(name, &mut root, eval_expr_list, out, xc)
 }
 
 fn parse_eval_expr_list<'a>(
@@ -369,11 +378,17 @@ fn run<'x>(
     }
     log_debug!(xc, "expressions: {:?}", expressions);
 
-    for item in &invocation.item_paths {
-        summary.add(&process_file_path(item, expressions.as_slice(), out, xc));
-        if summary.output_error {
-            break;
-        }
+    for item_path in &invocation.item_paths {
+        let item_result = Item::from_file_path(item_path, xc);
+        let stats = match item_result {
+            Ok(item) => process_item(&item, expressions.as_slice(), out, xc),
+            Err(e) => {
+                log_error!(xc, "error:{}: {}", item_path, e);
+                e.into()
+            }
+        };
+        summary.add(&stats);
+        if summary.output_error { break; }
     }
     if invocation.verbose {
         log_info!(xc, "accessible items: {}", summary.accessible_items);

@@ -175,8 +175,8 @@ impl<'a, T> Vector<'a, T> {
     }
 
     pub fn from_slice(
+        src: &[T],
         allocator: AllocatorRef<'a>,
-        src: &[T]
     ) -> Result<Self, AllocError>
     where T: Copy {
         let mut v: Self = Vector::new(allocator);
@@ -189,7 +189,7 @@ impl<'a, T> Vector<'a, T> {
         allocator: AllocatorRef<'b>,
     ) -> Result<Vector<'b, T>, AllocError>
     where T: Copy {
-        Vector::from_slice(allocator, self.as_slice())
+        Vector::from_slice(self.as_slice(), allocator)
     }
 }
 
@@ -485,7 +485,7 @@ mod tests {
         let mut buffer = [0u8; 100];
         let a = SingleAlloc::new(&mut buffer);
         let x: [u16; 4] = [ 2, 4, 6, 8 ];
-        let mut v = Vector::from_slice(a.to_ref(), &x).unwrap();
+        let mut v = Vector::from_slice(&x, a.to_ref()).unwrap();
         v.as_mut_slice()[2] = 7;
         assert_eq!(v.as_slice(), [2_u16, 4_u16, 7_u16, 8_u16 ]);
     }
@@ -495,7 +495,7 @@ mod tests {
         let mut buffer = [0u8; 100];
         let a = SingleAlloc::new(&mut buffer);
         let x: [u16; 4] = [ 2, 4, 6, 8 ];
-        let mut v = Vector::from_slice(a.to_ref(), &x).unwrap();
+        let mut v = Vector::from_slice(&x, a.to_ref()).unwrap();
         v.as_mut_slice()[2] = 7;
         let v2 = Vector::map_slice(&[2_u16, 4, 7, 8]);
         assert_eq!(v, v2);
@@ -509,8 +509,8 @@ mod tests {
         let a2 = SingleAlloc::new(&mut buf2);
         let x1: [u16; 4] = [ 2, 4, 6, 8 ];
         let x2: [u16; 3] = [ 1, 3, 5 ];
-        let v1 = Vector::from_slice(a1.to_ref(), &x1).unwrap();
-        let mut v2 = Vector::from_slice(a2.to_ref(), &x2).unwrap();
+        let v1 = Vector::from_slice(&x1, a1.to_ref()).unwrap();
+        let mut v2 = Vector::from_slice(&x2, a2.to_ref()).unwrap();
         v2.append_vector(v1).unwrap();
         assert_eq!(v2.as_slice(), [ 1_u16, 3_u16, 5_u16, 2_u16, 4_u16, 6_u16, 8_u16 ]);
         assert!(!a1.is_in_use());
@@ -523,7 +523,7 @@ mod tests {
         let a1 = SingleAlloc::new(&mut buf1);
         let a2 = SingleAlloc::new(&mut buf2);
         let x1: [u16; 4] = [ 2, 4, 6, 8 ];
-        let v1 = Vector::from_slice(a1.to_ref(), &x1).unwrap();
+        let v1 = Vector::from_slice(&x1, a1.to_ref()).unwrap();
         let v2 = v1.dup(a2.to_ref()).unwrap();
         core::mem::drop(v1);
         assert_eq!(v2.as_slice(), [ 2_u16, 4, 6, 8 ]);
