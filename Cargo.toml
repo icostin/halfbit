@@ -1,6 +1,6 @@
 [package]
 name = "halfbit"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Costin Ionescu <costin.ionescu@gmail.com>"]
 edition = "2018"
 description = "a free-standing collection of utilities"
