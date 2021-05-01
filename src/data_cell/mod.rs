@@ -17,7 +17,7 @@ use crate::io::ErrorCode;
 use crate::io::stream::Write;
 use crate::io::stream::SeekFrom;
 use crate::io::stream::Stream;
-use crate::num::fmt::MiniNumFmtPack;
+use crate::num::fmt as num_fmt;
 
 pub mod expr;
 pub mod eval;
@@ -199,17 +199,26 @@ where T: DataCellOps {
 #[derive(Debug)]
 pub struct U64Cell {
     pub n: u64,
-    pub fmt_pack: MiniNumFmtPack,
+    pub fmt_pack: num_fmt::MiniNumFmtPack,
 }
 
 impl U64Cell {
 
     pub fn new(n: u64) -> Self {
-        let fmt_pack = MiniNumFmtPack::default();
+        let fmt_pack = num_fmt::MiniNumFmtPack::default();
         U64Cell { n, fmt_pack }
     }
-    pub fn with_fmt(n: u64, fmt_pack: MiniNumFmtPack) -> Self {
+    pub fn with_fmt(n: u64, fmt_pack: num_fmt::MiniNumFmtPack) -> Self {
         U64Cell { n, fmt_pack }
+    }
+    pub fn hex(n: u64) -> Self {
+        let fmt_pack = num_fmt::MiniNumFmtPack::new(
+            num_fmt::Radix::new(16).unwrap(),
+            num_fmt::RadixNotation::DefaultPrefix,
+            num_fmt::MinDigitCount::new(2).unwrap(),
+            num_fmt::PositiveSign::Hidden,
+            num_fmt::ZeroSign::Hidden);
+        U64Cell::with_fmt(n, fmt_pack)
     }
 }
 
@@ -325,6 +334,15 @@ impl<'a> RecordDesc<'a> {
     pub fn field_count(&self) -> usize {
         self.field_names.len()
     }
+
+    pub fn field_index(&self, name: &str) -> Option<usize> {
+        for (i, n) in self.field_names.iter().enumerate() {
+            if *n == name {
+                return Some(i);
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -350,6 +368,10 @@ impl<'a> Record<'a> {
 
     pub fn get_fields_mut<'b>(&'b mut self) -> &'b mut [DataCell<'a>] {
         self.data.as_mut_slice()
+    }
+
+    pub fn set_field(&mut self, name: &str, value: DataCell<'a>) {
+        self.data.as_mut_slice()[self.desc.field_index(name).unwrap()] = value;
     }
 }
 
@@ -570,7 +592,6 @@ mod tests {
 
         {
             r.data.as_mut_slice()[0] = DataCell::from_u64(9);
-            use crate::num::fmt as num_fmt;
             let nf = num_fmt::MiniNumFmtPack::new(
                 num_fmt::Radix::new(16).unwrap(),
                 num_fmt::RadixNotation::DefaultPrefix,

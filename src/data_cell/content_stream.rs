@@ -12,11 +12,28 @@ use crate::data_cell::U64Cell;
 use crate::data_cell::output_byte_slice_as_human_readable_text;
 use crate::io::ErrorCode as IOErrorCode;
 use crate::io::IOPartialError;
+use crate::io::IOPartialResult;
 use crate::io::stream::RandomAccessRead;
 use crate::io::stream::SeekFrom;
 use crate::io::stream::Write;
 use crate::mm::Vector;
 use crate::num::fmt as num_fmt;
+
+pub const ELFCLASSNONE: u8 = 0;
+pub const ELFCLASS32: u8 = 1;
+pub const ELFCLASS64: u8 = 2;
+
+pub const ELFDATANONE: u8 = 0;
+pub const ELFDATA2LSB: u8 = 1;
+pub const ELFDATA2MSB: u8 = 2;
+
+const ELF_HEADER: RecordDesc<'static> = RecordDesc::new(
+    "elf_header",
+    &[
+        "ei_magic", "ei_class", "ei_data", "ei_version",
+        "ei_osabi", "ei_abiversion", "ei_pad",
+        "e_type", "e_machine", "e_version", "e_entry", "e_phoff", "e_shoff",
+    ]);
 
 /* ContentStream ************************************************************/
 #[derive(Debug)]
@@ -114,102 +131,89 @@ impl<'a, T: ?Sized + RandomAccessRead> ContentStream<'a, T> {
         Ok(DataCell::CellVector(xc.rc(RefCell::new(DCOVector(ids)))?))
     }
 
-    pub const ELFCLASSNONE: u8 = 0;
-    pub const ELFCLASS32: u8 = 1;
-    pub const ELFCLASS64: u8 = 2;
-
-    pub const ELFDATANONE: u8 = 0;
-    pub const ELFDATA2LSB: u8 = 1;
-    pub const ELFDATA2MSB: u8 = 2;
-
-    const ELF_HEADER: RecordDesc<'static> = RecordDesc::new(
-        "elf_header",
-        &[
-            "ei_magic", "ei_class", "ei_data", "ei_version",
-            "ei_osabi", "ei_abiversion", "ei_pad",
-            "e_type", "e_machine", "e_version", "e_entry", "e_phoff", "e_shoff",
-        ]);
-
     fn extract_elf_header<'x>(
         &mut self,
         xc: &mut ExecutionContext<'x>,
     ) -> Result<DataCell<'x>, Error<'x>> {
-        let mut eh = Record::new(&Self::ELF_HEADER, xc.get_main_allocator())?;
-        let ehf = eh.get_fields_mut();
+
+        let a = xc.get_main_allocator();
+        let mut eh = Record::new(&ELF_HEADER, a)?;
+
+
         let mut magic = [0_u8; 4];
         self.stream.seek_read(0, &mut magic, xc)?;
-        ehf[0] = DataCell::from_byte_slice(xc.get_main_allocator(), &magic)?;
-        //ehf[0] = DataCell::ByteVector(xc.rc(RefCell::new(ByteVector(xc.byte_vector_clone(&magic)?)))?);
-        Ok(DataCell::Record(xc.rc(RefCell::new(eh))?))
-        /*
-        let mut eh: Vector<'x, DataCell<'x>> = xc.vector();
-        let mut magic = [0_u8; 4];
-        item.stream.seek_read(0, &mut magic, xc)?;
-        eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &magic)?))?;
-        let ei_class = item.stream.read_u8(xc)?;
-        eh.push(match ei_class {
-            0 => DataCell::Identifier(String::map_str("ELFCLASSNONE")),
-            1 => DataCell::Identifier(String::map_str("ELFCLASS32")),
-            2 => DataCell::Identifier(String::map_str("ELFCLASS64")),
-            _ => DataCell::U64(ei_class.into()),
-        })?;
-        let ei_data = item.stream.read_u8(xc)?;
-        eh.push(match ei_data {
-            0 => DataCell::Identifier(String::map_str("ELFDATANONE")),
-            1 => DataCell::Identifier(String::map_str("ELFDATA2LSB")),
-            2 => DataCell::Identifier(String::map_str("ELFDATA2MSB")),
-            _ => DataCell::U64(ei_data.into()),
-        })?;
-        let ei_version = item.stream.read_u8(xc)?;
-        eh.push(match ei_version {
-            0 => DataCell::Identifier(String::map_str("EV_NONE")),
-            1 => DataCell::Identifier(String::map_str("EV_CURRENT")),
-            _ => DataCell::U64(ei_version.into()),
-        })?;
-        let ei_osabi = item.stream.read_u8(xc)?;
-        eh.push(match ei_osabi {
-            0 => DataCell::Identifier(String::map_str("ELFOSABI_NONE")),
-            1 => DataCell::Identifier(String::map_str("ELFOSABI_HPUX")),
-            2 => DataCell::Identifier(String::map_str("ELFOSABI_NETBSD")),
-            3 => DataCell::Identifier(String::map_str("ELFOSABI_LINUX")),
-            6 => DataCell::Identifier(String::map_str("ELFOSABI_SOLARIS")),
-            7 => DataCell::Identifier(String::map_str("ELFOSABI_AIX")),
-            8 => DataCell::Identifier(String::map_str("ELFOSABI_IRIX")),
-            9 => DataCell::Identifier(String::map_str("ELFOSABI_FREEBSD")),
-            10 => DataCell::Identifier(String::map_str("ELFOSABI_TRU64")),
-            11 => DataCell::Identifier(String::map_str("ELFOSABI_MODESTO")),
-            12 => DataCell::Identifier(String::map_str("ELFOSABI_OPENBSD")),
-            13 => DataCell::Identifier(String::map_str("ELFOSABI_OPENVMS")),
-            14 => DataCell::Identifier(String::map_str("ELFOSABI_NSK")),
-            _ => DataCell::U64(ei_osabi.into()),
-        })?;
-        eh.push(DataCell::U64(item.stream.read_u8(xc)?.into()))?;
-        let mut ei_pad = [0_u8; 7];
-        item.stream.read_exact(&mut ei_pad, xc)?;
-        eh.push(DataCell::ByteVector(Vector::from_slice(xc.get_main_allocator(), &ei_pad)?))?;
+        eh.set_field("ei_magic", DataCell::from_byte_slice(a, &magic)?);
 
-        fn read_u16le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        let ei_class = self.stream.read_u8(xc)?;
+        eh.set_field("ei_class", match ei_class {
+            0 => DataCell::from_static_id("ELFCLASSNONE"),
+            1 => DataCell::from_static_id("ELFCLASS32"),
+            2 => DataCell::from_static_id("ELFCLASS64"),
+            n => DataCell::from_u64(n.into()),
+        });
+
+        let ei_data = self.stream.read_u8(xc)?;
+        eh.set_field("ei_data", match ei_data {
+            0 => DataCell::from_static_id("ELFDATANONE"),
+            1 => DataCell::from_static_id("ELFDATA2LSB"),
+            2 => DataCell::from_static_id("ELFDATA2MSB"),
+            n => DataCell::from_u64(n.into()),
+        });
+
+        let ei_version = match self.stream.read_u8(xc)? {
+            0 => DataCell::from_static_id("EV_NONE"),
+            1 => DataCell::from_static_id("EV_CURRENT"),
+            n => DataCell::from_u64(n.into()),
+        };
+        eh.set_field("ei_version", ei_version);
+
+        let ei_osabi = match self.stream.read_u8(xc)? {
+            0 => DataCell::from_static_id("ELFOSABI_NONE"),
+            1 => DataCell::from_static_id("ELFOSABI_HPUX"),
+            2 => DataCell::from_static_id("ELFOSABI_NETBSD"),
+            3 => DataCell::from_static_id("ELFOSABI_LINUX"),
+            6 => DataCell::from_static_id("ELFOSABI_SOLARIS"),
+            7 => DataCell::from_static_id("ELFOSABI_AIX"),
+            8 => DataCell::from_static_id("ELFOSABI_IRIX"),
+            9 => DataCell::from_static_id("ELFOSABI_FREEBSD"),
+            10 => DataCell::from_static_id("ELFOSABI_TRU64"),
+            11 => DataCell::from_static_id("ELFOSABI_MODESTO"),
+            12 => DataCell::from_static_id("ELFOSABI_OPENBSD"),
+            13 => DataCell::from_static_id("ELFOSABI_OPENVMS"),
+            14 => DataCell::from_static_id("ELFOSABI_NSK"),
+            n => DataCell::from_u64(n.into()),
+        };
+        eh.set_field("ei_osabi", ei_osabi);
+
+        let ei_abiversion = self.stream.read_u8(xc)?;
+        eh.set_field("ei_abiversion", DataCell::from_u64(ei_abiversion.into()));
+
+        let mut ei_pad = [0_u8; 7];
+        self.stream.read_uninterrupted(&mut ei_pad, xc)?;
+        eh.set_field("ei_pad", DataCell::from_byte_slice(a, &ei_pad)?);
+
+        fn read_u16le_as_u64<'x, T: ?Sized + RandomAccessRead>(r: &mut T, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
             r.read_u16le(xc).map(|v| v as u64)
         }
-        fn read_u16be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        fn read_u16be_as_u64<'x, T: ?Sized + RandomAccessRead>(r: &mut T, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
             r.read_u16be(xc).map(|v| v as u64)
         }
-        fn read_u32le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        fn read_u32le_as_u64<'x, T: ?Sized + RandomAccessRead>(r: &mut T, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
             r.read_u32le(xc).map(|v| v as u64)
         }
-        fn read_u32be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        fn read_u32be_as_u64<'x, T: ?Sized + RandomAccessRead>(r: &mut T, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
             r.read_u32be(xc).map(|v| v as u64)
         }
-        fn read_u64le_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        fn read_u64le_as_u64<'x, T: ?Sized + RandomAccessRead>(r: &mut T, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
             r.read_u64le(xc).map(|v| v as u64)
         }
-        fn read_u64be_as_u64<'x>(r: &mut dyn RandomAccessRead, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
+        fn read_u64be_as_u64<'x, T: ?Sized + RandomAccessRead>(r: &mut T, xc: &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64> {
             r.read_u64be(xc).map(|v| v as u64)
         }
-        let read_half: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-        let read_word: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-        let read_addr: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
-        let read_off: &dyn Fn(&mut dyn RandomAccessRead, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+        let read_half: &dyn Fn(&mut T, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+        let read_word: &dyn Fn(&mut T, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+        let read_addr: &dyn Fn(&mut T, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
+        let read_off: &dyn Fn(&mut T, &mut ExecutionContext<'x>) -> IOPartialResult<'x, u64>;
         if ei_data == ELFDATA2LSB && ei_class == ELFCLASS32 {
             read_half = &read_u16le_as_u64;
             read_word = &read_u32le_as_u64;
@@ -231,22 +235,28 @@ impl<'a, T: ?Sized + RandomAccessRead> ContentStream<'a, T> {
             read_addr = &read_u64be_as_u64;
             read_off = &read_u64be_as_u64;
         } else {
-            return Ok(DataCell::Record(eh, ELF_HEADER_FIELDS));
+            return Ok(DataCell::Record(xc.rc(RefCell::new(eh))?))
         }
-        let e_type = read_half(item.stream, xc)?;
-        let e_machine = read_half(item.stream, xc)?;
-        let e_version = read_word(item.stream, xc)?;
-        let e_entry = read_addr(item.stream, xc)?;
-        let e_phoff = read_off(item.stream, xc)?;
-        let e_shoff = read_off(item.stream, xc)?;
-        eh.push(DataCell::U64(e_type))?;
-        eh.push(DataCell::U64(e_machine))?;
-        eh.push(DataCell::U64(e_version))?;
-        eh.push(DataCell::U64(e_entry))?;
-        eh.push(DataCell::U64(e_phoff))?;
-        eh.push(DataCell::U64(e_shoff))?;
 
-    */
+        let e_type = read_half(&mut self.stream, xc)?;
+        eh.set_field("e_type", DataCell::from_u64(e_type));
+
+        let e_machine = read_half(&mut self.stream, xc)?;
+        eh.set_field("e_machine", DataCell::from_u64(e_machine));
+
+        let e_version = read_word(&mut self.stream, xc)?;
+        eh.set_field("e_version", DataCell::from_u64(e_version));
+
+        let e_entry = read_addr(&mut self.stream, xc)?;
+        eh.set_field("e_entry", DataCell::from_u64_cell(U64Cell::hex(e_entry)));
+
+        let e_phoff = read_off(&mut self.stream, xc)?;
+        eh.set_field("e_phoff", DataCell::from_u64_cell(U64Cell::hex(e_phoff)));
+
+        let e_shoff = read_off(&mut self.stream, xc)?;
+        eh.set_field("e_shoff", DataCell::from_u64_cell(U64Cell::hex(e_shoff)));
+
+        Ok(DataCell::Record(xc.rc(RefCell::new(eh))?))
     }
 
 }
